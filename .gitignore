@@ -1,0 +1,38 @@
+# Secrets and credentials
+secrets.json
+*.secret
+*.key
+*.pem
+
+# Environment files
+.env
+.env.*
+!.env.example
+
+# Local configuration
+local/
+*.local.json
+*.local.yaml
+
+# Node-RED
+node-red/.config.nodes.json
+node-red/.flows.json.backup
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Editor files
+*.swp
+*.swo
+*~
+.idea/
+.vscode/
+
+# Logs
+*.log
+logs/
+
+# Backups (stored elsewhere)
+*.tar.gz
+backups/
