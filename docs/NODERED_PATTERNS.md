@@ -81,11 +81,11 @@ TIMEOUT=90  # seconds to wait for heartbeat
 
 # Subscribe and wait for one message with timeout
 mosquitto_sub -h "$MQTT_HOST" -u "$MQTT_USER" -P "$MQTT_PASS" \
-    -t "$HEARTBEAT_TOPIC" -C 1 -W "$TIMEOUT" &gt; /dev/null 2&gt;&amp;1
+    -t "$HEARTBEAT_TOPIC" -C 1 -W "$TIMEOUT" > /dev/null 2>&1
 
 if [ $? -eq 0 ]; then
     # Heartbeat received, ping Healthchecks.io
-    curl -fsS -m 10 --retry 3 "$HC_PING_URL" &gt; /dev/null
+    curl -fsS -m 10 --retry 3 "$HC_PING_URL" > /dev/null
 else
     # No heartbeat, don't ping (Healthchecks.io will alert after grace period)
     logger "highland-watchdog: No heartbeat from Node-RED"
@@ -314,12 +314,12 @@ function getAreasByCapability(capability) {
   const result = {};
   
   for (const [area, areaData] of Object.entries(flowRegistry)) {
-    const matchingDevices = areaData.devices.filter(deviceId =&gt; {
+    const matchingDevices = areaData.devices.filter(deviceId => {
       const device = deviceRegistry[deviceId];
       return device &amp;&amp; device.capabilities.includes(capability);
     });
     
-    if (matchingDevices.length &gt; 0) {
+    if (matchingDevices.length > 0) {
       result[area] = matchingDevices;
     }
   }
@@ -398,6 +398,148 @@ msg.payload = {
 3. Optional: Manual cleanup or periodic audit
 
 *Details TBD during implementation.*
+
+---
+
+## Startup Sequencing
+
+### The Problem
+
+On Node-RED startup or deploy, two things happen simultaneously that can conflict:
+
+1. MQTT subscriptions are established and the broker **immediately** delivers all retained messages for those topics
+2. The flow's own initialization (Config Loader, flow registration, context restoration from disk) is still in progress
+
+A retained message — say, `highland/state/scheduler/period` — can arrive and trigger handler logic before `global.config` is loaded, before flow context is restored, before the flow has registered itself. Depending on what the handler does, this ranges from harmless to quietly wrong.
+
+Additionally, there is no native MQTT signal for "end of retained messages." The broker delivers retained messages as fast as it can after subscription with no marker indicating when retained delivery is complete and real-time messages begin.
+
+### The Init Probe Pattern
+
+The solution is an **echo probe** combined with an initialization gate.
+
+**How it works:**
+
+Within a single MQTT connection, message delivery is ordered. All retained messages for subscribed topics are already in-flight before any new publish can be queued. By publishing a probe message to a topic the flow is also subscribed to, the probe is guaranteed to arrive *after* all retained messages for that connection.
+
+When the flow receives its own probe back, it knows retained delivery is complete.
+
+```
+On startup:
+  1. Set flow.initialized = false  (gate closed)
+  2. Subscribe to all topics (including retained state topics)
+  3. Publish probe to highland/command/nodered/init_probe/{flow_name} (non-retained)
+  4. Retained messages begin arriving → buffer or discard (gate is closed)
+  5. Own probe arrives → all retained messages have been received
+  6. Run initialization work (Config Loader complete, flow registration, etc.)
+  7. Set flow.initialized = true  (gate opens)
+  8. Process buffered retained state
+  9. Normal operation begins
+```
+
+**Flow diagram:**
+
+```
+┌─────────────────────────────────────────────────────────────────────┐
+│  Group: Startup Sequencing                                          │
+│                                                                     │
+│  ┌──────────────────┐    ┌────────────────────────────────────┐    │
+│  │ Inject           │───►│ Init                               │    │
+│  │ • On startup     │    │ • flow.set('initialized', false)   │    │
+│  │ • On deploy      │    │ • flow.set('state_buffer', [])     │    │
+│  └──────────────────┘    │ • Publish init_probe               │    │
+│                           └────────────────────────────────────┘    │
+│                                                                     │
+│  ┌──────────────────────────────────────────────────────────────┐  │
+│  │ MQTT-in: highland/state/#  (retained topics)                 │  │
+│  │          ──► gate check ──► if closed: buffer msg            │  │
+│  └──────────────────────────────────────────────────────────────┘  │
+│                                                                     │
+│  ┌──────────────────────────────────────────────────────────────┐  │
+│  │ MQTT-in: highland/command/nodered/init_probe/{flow_name}     │  │
+│  │          ──► own probe received                              │  │
+│  │          ──► run init work (config loaded, flow registered)  │  │
+│  │          ──► flow.set('initialized', true)                   │  │
+│  │          ──► process buffered state                          │  │
+│  └──────────────────────────────────────────────────────────────┘  │
+│                                                                     │
+└─────────────────────────────────────────────────────────────────────┘
+```
+
+### Gate Pattern
+
+Every handler that depends on initialized state checks the gate before proceeding:
+
+```javascript
+// At the top of any handler that reads flow or global config
+if (!flow.get('initialized')) {
+    // Buffer if this is retained state we'll need later
+    const buffer = flow.get('state_buffer') || [];
+    buffer.push(msg);
+    flow.set('state_buffer', buffer);
+    return null;  // Stop processing
+}
+
+// Gate is open — safe to proceed
+const config = global.get('config.deviceRegistry');
+// ... rest of handler logic
+```
+
+### State vs Event Handling During Init
+
+**Retained state messages** (from `highland/state/#`) — buffer these. They represent current truth and will be needed once the gate opens.
+
+**Point-in-time events** (from `highland/event/#`) — discard these. If a real-time event fires during the brief init window (typically < 1 second), it is genuinely gone and cannot be recovered. This is acceptable — the window is very short and events are by definition momentary.
+
+### Processing the Buffer
+
+Once the gate opens, process buffered state in order:
+
+```javascript
+// In the init_probe handler, after setting initialized = true
+const buffer = flow.get('state_buffer') || [];
+flow.set('state_buffer', []);  // Clear buffer
+
+for (const bufferedMsg of buffer) {
+    // Re-inject each buffered message into the handler chain
+    node.send(bufferedMsg);
+}
+```
+
+### Reacting to State vs Reacting to Events
+
+This pattern clarifies an important distinction in how flows handle scheduler (and other) state:
+
+**Two entry points, one handler:**
+
+```
+highland/state/scheduler/period  ──┐  (retained — arrives during init, buffered,
+  (startup recovery path)          │   processed after gate opens)
+                                   ├──► mutate flow.current_period ──► period logic
+highland/event/scheduler/evening ──┘  (real-time — arrives during normal operation,
+  (real-time transition path)         gate already open)
+```
+
+The mutation (`flow.set('current_period', value)`) is a waypoint in the chain, not the end of it. The message continues downstream to the handler logic in the same pipeline pass. There is no observer or watch mechanism on context variables — the MQTT message is always the trigger, and context is the shared memory that downstream logic reads from.
+
+**Why this matters:** Any logic in the flow that needs to know the current period calls `flow.get('current_period')`. It never re-queries MQTT. The state topic is the recovery mechanism; local context is the working copy.
+
+### Probe Topic Convention
+
+```
+highland/command/nodered/init_probe/{flow_name}
+```
+
+Each flow uses its own probe topic to avoid cross-flow interference. The `highland/command/` namespace is appropriate — this is an imperative trigger, not an event or state.
+
+The probe message is non-retained and carries no meaningful payload beyond the standard envelope. It exists solely to act as a position marker in the message queue.
+
+### Notes
+
+- The init window is typically well under one second — the probe round-trip over local MQTT is fast. The gate is a safety net, not a performance concern.
+- This pattern applies to **every flow** that subscribes to retained state topics. Area flows, utility flows, all of them.
+- The Config Loader flow itself bootstraps before other flows need it — it has no retained state dependencies of its own, so its init is simpler (no probe needed, just load files and set globals).
+- If the MQTT broker itself is unavailable on startup, the probe never returns. The flow should have a startup timeout (e.g., 10 seconds) after which it logs an error and enters a degraded state rather than waiting indefinitely.
 
 ---
 
@@ -506,8 +648,8 @@ flow.set('logLevel', 'WARN');  // This flow only emits WARN and above
 ```
 
 When a flow emits a log message:
-- If message level &gt;= flow threshold → emit to logging utility
-- If message level &lt; flow threshold → suppress
+- If message level >= flow threshold → emit to logging utility
+- If message level < flow threshold → suppress
 
 **Use case:** Set a flow to `DEBUG` while developing, `WARN` in steady state.
 
@@ -626,7 +768,7 @@ If a flow wants to notify after repeated ERRORs, *that flow* decides:
 │  Increment failure counter (flow context)                   │
 │       │                                                     │
 │       ▼                                                     │
-│  Counter &gt; threshold? ──► YES ──► Publish to notify         │
+│  Counter > threshold? ──► YES ──► Publish to notify         │
 │       │                           (deliberate choice)       │
 │       ▼                                                     │
 │      NO → continue, try again next cycle                    │
@@ -1175,9 +1317,9 @@ Track battery-powered device levels, flag devices needing replacement, notify ap
 
 | State | Threshold | Notification | Notes |
 |-------|-----------|--------------|-------|
-| `normal` | &gt; 35% | None | Healthy |
+| `normal` | > 35% | None | Healthy |
 | `low` | 35% - 15% | Normal priority | Doesn't break DND; sent once when threshold crossed |
-| `critical` | &lt; 15% | High priority | Breaks DND; repeats every 24 hours until recovered |
+| `critical` | < 15% | High priority | Breaks DND; repeats every 24 hours until recovered |
 
 **Threshold rationale:** Some devices (e.g., Sonoff) report in 10% increments. These thresholds provide 7 levels of normal, 2 levels of low, 1 level of critical for coarse reporters.
 
@@ -1553,16 +1695,16 @@ Two-tier monitoring: local detailed tracking via MQTT, external dead-man's-switc
 
 | Metric | Warning | Critical | Notes |
 |--------|---------|----------|-------|
-| Disk usage | &gt; 70% | &gt; 90% | Applies to all hosts |
-| CPU usage (sustained) | &gt; 80% for 5 min | &gt; 95% for 5 min | Transient spikes ignored |
-| Memory usage | &gt; 80% | &gt; 95% | |
-| Devices offline (Z2M) | Any (1+) | &gt; 20% of total | Single device offline = degraded |
-| Devices offline (Z-Wave) | Any (1+) | &gt; 20% of total | Single device offline = degraded |
+| Disk usage | > 70% | > 90% | Applies to all hosts |
+| CPU usage (sustained) | > 80% for 5 min | > 95% for 5 min | Transient spikes ignored |
+| Memory usage | > 80% | > 95% | |
+| Devices offline (Z2M) | Any (1+) | > 20% of total | Single device offline = degraded |
+| Devices offline (Z-Wave) | Any (1+) | > 20% of total | Single device offline = degraded |
 
 ### Per-Service Checks
 
 | Service | Responsiveness Check | Threshold Metrics |
-|---------|---------------------|-------------------|
+|---------|----------------------|-------------------|
 | **MQTT broker** | Publish/subscribe test | Host disk, CPU, memory |
 | **Zigbee2MQTT** | HTTP API or MQTT bridge topic | Devices online/offline, host resources |
 | **Z-Wave JS UI** | WebSocket or HTTP API | Nodes online/dead, host resources |
@@ -1625,8 +1767,8 @@ Topic: `highland/status/node_red/heartbeat`
 
 ```
 For each threshold metric:
-  if value &gt; critical_threshold → metric status = "critical"
-  else if value &gt; warning_threshold → metric status = "warning"
+  if value > critical_threshold → metric status = "critical"
+  else if value > warning_threshold → metric status = "warning"
   else → metric status = "ok"
 
 Overall status:
@@ -1694,7 +1836,7 @@ Simple script running on cron (every minute):
 
 ```
 1. Check last message on highland/status/node_red/heartbeat
-2. If timestamp &gt; threshold (e.g., 90 seconds old):
+2. If timestamp > threshold (e.g., 90 seconds old):
    - Publish: highland/status/node_red/health { status: "unhealthy" }
    - Do NOT ping Healthchecks.io (absence of ping triggers their alert)
 3. If timestamp fresh:
@@ -1879,4 +2021,4 @@ All systems operational.
 
 ---
 
-*Last Updated: 2026-03-03*
+*Last Updated: 2026-03-09*
