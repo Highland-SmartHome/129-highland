@@ -84,7 +84,7 @@ All planning and reference documentation lives in [`/docs`](./docs/):
 
 ## Status
 
-**Phase:** Documentation complete, awaiting hardware (SSDs on order)
+**Phase:** Documentation complete, hardware in-hand — ready to build
 
 ---
 
