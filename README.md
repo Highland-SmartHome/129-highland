@@ -6,22 +6,23 @@ Ground-up rebuild of a 6-year-old Home Assistant infrastructure. The goal is a d
 
 ```
 ┌─────────────────────────┐
-│   HAOS (Dedicated HW)   │
+│        HAOS             │
 │   Dell OptiPlex SFF     │
+│   http(s)://home.local  │
 │   • Home Assistant      │
 │   • Frontend/UI         │
 └───────────┬─────────────┘
             │ MQTT / WebSocket
             ▼
 ┌─────────────────────────┐     ┌─────────────────────────┐
-│  Protocol Nerve Center  │     │   Node-RED / Utility    │
-│  Dell OptiPlex MFF      │     │   Dell OptiPlex SFF     │
+│   Communication Hub     │     │       Workflow          │
+│   Dell OptiPlex MFF     │     │   Dell OptiPlex SFF     │
+│   http(s)://hub.local   │     │ http(s)://workflow.local│
 │   • MQTT Broker         │◄───►│   • Node-RED            │
 │   • Zigbee2MQTT         │     │   • PostgreSQL          │
 │   • Z-Wave JS UI        │     │   • Utility services    │
 └─────────────────────────┘     └─────────────────────────┘
             │
-            │ (Future)
             ▼
 ┌─────────────────────────┐
 │   Edge AI Box           │
@@ -59,6 +60,7 @@ All planning and reference documentation lives in [`/docs`](./docs/):
 | [CALENDAR_INTEGRATION.md](docs/CALENDAR_INTEGRATION.md) | Google Calendar bridge for automation triggers |
 | [LORA.md](docs/LORA.md) | LoRaWAN sensors (mailbox, driveway bins) |
 | [ASSIST_PIPELINE.md](docs/ASSIST_PIPELINE.md) | HA Assist voice pipeline with Marvin persona |
+| [GARAGE_DOOR.md](docs/GARAGE_DOOR.md) | Konnected GDO blaQ garage door integration |
 
 ### Reference
 | Document | Purpose |
@@ -71,16 +73,16 @@ All planning and reference documentation lives in [`/docs`](./docs/):
 
 ```
 129-highland/
-├── docs/           # Planning &amp; reference documentation
+├── docs/           # Planning & reference documentation
 ├── node-red/       # Flows, package.json, utilities
-├── pnc/            # Protocol Nerve Center configs
+├── hub/            # Communication Hub configs
 ├── ha/             # Home Assistant configuration
 └── scripts/        # Backup scripts, utilities
 ```
 
 ## Domain
 
-`highland.ferris.network` — Remote access via Nabu Casa
+`highland.ferris.network` — Remote access via Nabu Casa (after decom of live instance)
 
 ## Status
 
