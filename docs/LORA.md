@@ -1,435 +1,326 @@
-# LoRaWAN Sensors — Design & Architecture
+# LoRaWAN Sensors — Design Document
 
 ## Overview
 
-LoRaWAN-based sensors for low-power, long-range monitoring of locations without Wi-Fi coverage or convenient power. Primary use cases: mailbox delivery detection, trash/recycling bin monitoring.
+LoRaWAN sensors provide long-range, low-power connectivity for outdoor and hard-to-reach locations. The Highland deployment uses a **Milesight UG65 gateway** connected to The Things Network (TTN), with sensor data flowing through Node-RED for processing.
 
-**Network:** The Things Network (TTN) via TTN Mapper coverage in the Hudson Valley. Helium is an alternative if TTN coverage proves insufficient.
-
----
-
-## Hardware Platform
-
-**Selected:** RAKwireless RAK3172-SiP (STM32WLE5 SoC)
-
-**Rationale:**
-- Integrated LoRa transceiver + ARM Cortex-M4 MCU in a single package
-- Low power consumption suitable for battery operation
-- Arduino and STM32CubeIDE support
-- Small form factor for mailbox/bin enclosures
-
-**Alternative considered:** LILYGO T3S3 — larger, ESP32-based, more power-hungry. Better for prototyping but not ideal for battery-powered field deployment.
+**Sensors planned:**
+- Mailbox door sensor (EM300-MCS)
+- Driveway bin tilt sensors (EM320-TILT × 2)
 
 ---
 
-## Mailbox Sensor
+## Architecture
 
-### Detection Strategy
+```
+┌─────────────────┐     LoRaWAN     ┌─────────────────┐
+│   EM300-MCS     │ ─────────────►  │   Milesight     │
+│   (Mailbox)     │                 │   UG65 Gateway  │
+└─────────────────┘                 └────────┬────────┘
+                                             │
+┌─────────────────┐     LoRaWAN              │ MQTT
+│  EM320-TILT ×2  │ ─────────────►           │
+│  (Bins)         │                          ▼
+└─────────────────┘                 ┌─────────────────┐
+                                    │   TTN MQTT      │
+                                    │   Integration   │
+                                    └────────┬────────┘
+                                             │
+                                             ▼
+                                    ┌─────────────────┐
+                                    │   Node-RED      │
+                                    │   (LoRaWAN      │
+                                    │   Processing)   │
+                                    └────────┬────────┘
+                                             │
+                                             ▼
+                                    ┌─────────────────┐
+                                    │   Mosquitto on  │
+  → Mosquitto on Communication Hub (hub.local:1883)
+                                    │   highland/...  │
+                                    └─────────────────┘
+```
 
-**Primary:** Reed switch + magnet on mailbox door. Simple, reliable, low power. Door open = magnet moves away = switch state change = wake MCU = transmit event.
+**Data path:**
+1. Sensor transmits LoRaWAN uplink
+2. Gateway receives, forwards to TTN
+3. TTN MQTT integration publishes to `v3/{app_id}/devices/{device_id}/up`
+4. Node-RED subscribes (MQTT Out — publishes to `hub.local:1883` with highland MQTT credentials)
+5. Node-RED decodes payload, runs state machine, publishes to `highland/` topics
+6. HA consumes via MQTT Discovery
 
-**Complementary:** IR break-beam across mail slot. Detects mail insertion without door opening (slot deliveries). Secondary confirmation for door-based events.
+---
 
-**Rejected approaches:**
-- Weight/load cell — complexity, calibration drift, false positives from snow/ice accumulation
-- Camera/vision — power budget incompatible with battery operation
-- Capacitive sensing — environmental sensitivity in outdoor enclosure
+## Gateway Configuration
+
+**Milesight UG65:**
+- Connected to TTN (The Things Network) Community Edition
+- Region: US915
+- Packet forwarder: Semtech UDP or Basic Station (TBD at implementation)
+
+**TTN Application:**
+- Application ID: `highland-sensors` (or similar)
+- MQTT Integration enabled
+- Payload formatters: Use Milesight-provided decoders (JavaScript)
+
+---
+
+## Mailbox Sensor — EM300-MCS
+
+### Purpose
+
+Detect mailbox door open/close events. Combined with USPS Informed Delivery email parsing to determine delivery state.
 
 ### State Machine
 
-The mailbox sensor tracks delivery state across a calendar day. State transitions are event-driven (sensor triggers) or time-driven (midnight rollover, confirmation timeout).
-
 ```
-┌─────────────────────────────────────────────────────────────────────────────┐
-│                           MAILBOX STATE MACHINE                             │
-├─────────────────────────────────────────────────────────────────────────────┤
-│                                                                             │
-│   ┌──────────────┐                                                          │
-│   │    EMPTY     │◄─────────────────────────────────────────────────────┐   │
-│   │              │                                                      │   │
-│   │  (midnight   │                                                      │   │
-│   │   reset)     │                                                      │   │
-│   └──────┬───────┘                                                      │   │
-│          │                                                              │   │
-│          │ door_open OR slot_trigger                                    │   │
-│          ▼                                                              │   │
-│   ┌──────────────┐                                                      │   │
-│   │   PENDING    │──────────────────────────────────────────────────┐   │   │
-│   │              │                                                  │   │   │
-│   │  (awaiting   │                                                  │   │   │
-│   │  retrieval   │                                                  │   │   │
-│   │  confirm)    │                                                  │   │   │
-│   └──────┬───────┘                                                  │   │   │
-│          │                                                          │   │   │
-│          │                    ┌──────────────────┐                  │   │   │
-│          │                    │                  │                  │   │   │
-│          ├────────────────────┤  door_open       │                  │   │   │
-│          │  door_open         │  (retrieval      │                  │   │   │
-│          │  (retrieval        │  attempt but     │                  │   │   │
-│          │  confirmed)        │  no confirmation)│                  │   │   │
-│          │                    │                  │                  │   │   │
-│          ▼                    ▼                  │                  │   │   │
-│   ┌──────────────┐     ┌──────────────┐          │                  │   │   │
-│   │  RETRIEVED   │     │   CHECKED    │──────────┘                  │   │   │
-│   │              │     │              │                             │   │   │
-│   │  (mail       │     │  (opened     │                             │   │   │
-│   │  collected)  │     │  but empty   │                             │   │   │
-│   │              │     │  or partial) │                             │   │   │
-│   └──────┬───────┘     └──────┬───────┘                             │   │   │
-│          │                    │                                     │   │   │
-│          │ midnight           │ door_open (with retrieval confirm)  │   │   │
-│          │                    │                                     │   │   │
-│          │                    ▼                                     │   │   │
-│          │             ┌──────────────┐                             │   │   │
-│          │             │  RETRIEVED   │                             │   │   │
-│          │             └──────┬───────┘                             │   │   │
-│          │                    │                                     │   │   │
-│          │                    │ midnight                            │   │   │
-│          └────────────────────┴─────────────────────────────────────┘   │   │
-│                                                                             │
-│   ┌──────────────┐                                                          │
-│   │  DELIVERY_   │◄── midnight passes while in PENDING                      │
-│   │  EXCEPTION   │                                                          │
-│   │              │                                                          │
-│   │  (delivery   │─── door_open (late retrieval confirm) ──► RETRIEVED      │
-│   │  unconfirmed)│                                                          │
-│   └──────────────┘                                                          │
-│                                                                             │
-└─────────────────────────────────────────────────────────────────────────────┘
+┌─────────────────────────────────────────────────────────────┐
+│                        IDLE                                 │
+│  • No delivery expected today                               │
+│  • Waiting for morning advisory email                       │
+└─────────────────────────────────────────────────────────────┘
+           │
+           │ Morning advisory email received
+           ▼
+┌─────────────────────────────────────────────────────────────┐
+│                   ADVISORY_RECEIVED                         │
+│  • Delivery expected today                                  │
+│  • Waiting for door event or confirmation email             │
+└─────────────────────────────────────────────────────────────┘
+           │                              │
+           │ Door event                   │ Midnight (no door event)
+           ▼                              ▼
+┌─────────────────────────┐    ┌─────────────────────────────┐
+│     UNCLASSIFIED        │    │    DELIVERY_EXCEPTION       │
+│  • Door opened          │    │  • Advisory but no delivery │
+│  • Waiting for          │    │  • Non-terminal — can       │
+│    confirmation email   │    │    resolve if confirmation  │
+│    (lag window)         │    │    arrives later            │
+└─────────────────────────┘    └─────────────────────────────┘
+           │                              │
+           │ Confirmation email           │ Late confirmation
+           │ within lag window            │ email received
+           ▼                              ▼
+┌─────────────────────────────────────────────────────────────┐
+│                      MAIL_WAITING                           │
+│  • Confirmed delivery                                       │
+│  • Mail is in the box                                       │
+└─────────────────────────────────────────────────────────────┘
+           │
+           │ Door event (retrieval)
+           ▼
+┌─────────────────────────────────────────────────────────────┐
+│                       RETRIEVED                             │
+│  • Mail collected                                           │
+│  • Resets to IDLE at midnight                               │
+└─────────────────────────────────────────────────────────────┘
 ```
 
-### States
+### USPS Informed Delivery Integration
 
-| State | Meaning | Entry Condition |
-|-------|---------|-----------------|
-| `EMPTY` | No mail expected or present | Midnight reset, or initialization |
-| `PENDING` | Delivery detected, awaiting retrieval | Door open or slot trigger (first event of day) |
-| `CHECKED` | Mailbox opened but retrieval not confirmed | Door open while PENDING, but no retrieval confirmation |
-| `RETRIEVED` | Mail collected | Retrieval confirmed (door open + confirmation mechanism) |
-| `DELIVERY_EXCEPTION` | Delivery detected yesterday, not retrieved before midnight | Midnight while in PENDING |
+**Email types:**
+- **Advisory email** — arrives ~6:00 AM, contains scanned images of expected mail
+- **Confirmation email** — arrives after delivery, confirms mail was delivered
 
-### State Ownership
+**Email source:** `highland@ferris.network` (Dynu-hosted, standard IMAP/SMTP)
 
-**Node-RED owns the state machine.** The LoRaWAN sensor transmits raw events (door open, door close, slot trigger); Node-RED interprets them, maintains state, and publishes semantic events.
+**Processing:**
+- Node-RED polls IMAP for new emails from `USPSInformedDelivery@usps.gov`
+- Parse subject line to determine email type
+- Move processed emails to a `processed` folder (not delete)
+- 14-day purge of processed folder
 
-**MQTT state topic (retained):**
-```
-highland/state/mailbox/delivery
-```
-
-**Payload:**
-```json
-{
-  "timestamp": "2026-03-07T14:30:00Z",
-  "state": "PENDING",
-  "last_event": "door_open",
-  "last_event_time": "2026-03-07T14:28:00Z",
-  "delivery_time": "2026-03-07T14:28:00Z",
-  "retrieval_time": null
-}
-```
-
-### DELIVERY_EXCEPTION State
-
-`DELIVERY_EXCEPTION` is a first-class state, not an error condition. It mirrors USPS terminology ("delivery exception") and represents a real operational state: mail was delivered but not retrieved before the calendar day ended.
-
-**Entry condition:** Midnight passes while state is `PENDING`.
-
-**Behavior:**
-- Non-terminal — the exception is resolvable
-- Notification fires on entry (high priority): "Mail from yesterday was not retrieved"
-- State persists until door_open event confirms late retrieval
-- On late retrieval: transition to `RETRIEVED`, notification: "Yesterday's mail retrieved"
-
-**Why not just stay in PENDING?** Calendar day boundary is semantically meaningful for mail. A delivery on Monday not retrieved until Tuesday is operationally different from a delivery retrieved same-day. The exception state captures this.
+**Lag window:** Confirmation email may arrive minutes to hours after physical delivery. The state machine waits in `UNCLASSIFIED` for a configurable window (default: 2 hours) before assuming non-delivery.
 
 ### Midnight Boundary
 
-The calendar day rollover is handled by the Scheduler flow's `midnight` task event (`highland/event/scheduler/midnight`), which fires at 00:00:00 local time. This is the same event used by the Daily Digest and any other flow that needs a true date-rollover trigger.
+The `DELIVERY_EXCEPTION` state is triggered by the midnight calendar boundary (`highland/event/scheduler/midnight`), not by the `OVERNIGHT` period transition. This is a discrete scheduler task event, distinct from period events.
 
-**Mailbox flow subscribes to `highland/event/scheduler/midnight`:**
-- If current state is `PENDING` → transition to `DELIVERY_EXCEPTION`
-- If current state is `RETRIEVED` or `EMPTY` → transition to `EMPTY` (new day)
-- If current state is `CHECKED` → transition to `EMPTY` (nothing was delivered, just checked)
-- If current state is `DELIVERY_EXCEPTION` → remain in `DELIVERY_EXCEPTION` (still unresolved)
-
-### Overnight Period vs Midnight
-
-These are distinct concepts:
-
-| Event | Trigger | Purpose |
-|-------|---------|---------|
-| `highland/event/scheduler/overnight` | 10:00 PM (configurable) | House enters overnight mode; lighting, security posture changes |
-| `highland/event/scheduler/midnight` | 00:00:00 exactly | Calendar day boundary; date-sensitive state machines roll over |
-
-The mailbox state machine cares about the **calendar day boundary** (midnight), not the **overnight period** (10pm). A delivery at 11pm is still "today's mail" until midnight, even though the house is in overnight mode.
-
-### Retrieval Confirmation
-
-**Challenge:** Distinguishing "opened to check" from "opened and retrieved mail."
-
-**Approaches (TBD during implementation):**
-
-1. **Duration heuristic** — Door open > N seconds = retrieval; < N seconds = check. Simple but imperfect.
-
-2. **Weight delta** — Load cell detects weight decrease after door close. More reliable but adds hardware complexity and calibration burden.
-
-3. **Manual confirmation** — Notification action: "Did you get the mail?" User confirms. Highest reliability, lowest automation.
-
-4. **Implicit confirmation** — Assume retrieval on any door_open while PENDING. Accept false positives (CHECKED → RETRIEVED when actually just checking). Simplest, may be good enough.
-
-Initial implementation: **implicit confirmation** (option 4). If false positives prove annoying, layer in duration heuristic (option 1).
-
-### Notifications
-
-| Trigger | Severity | Message |
-|---------|----------|---------|
-| Delivery detected | `low` | "Mail delivered" |
-| Retrieval confirmed | `low` | "Mail retrieved" (optional, may suppress) |
-| Midnight while PENDING | `high` | "Mail from yesterday was not retrieved" |
-| Late retrieval | `low` | "Yesterday's mail retrieved" |
-
----
-
-## Trash/Recycling Bin Sensors
-
-### Detection Strategy
-
-**Approach:** Ultrasonic distance sensor mounted inside bin lid, measuring distance to contents.
-
-**Derived metrics:**
-- `fill_level_percent` — 0% = empty, 100% = full
-- `bin_out` — boolean, derived from accelerometer/tilt detection (bin moved to curb)
-- `bin_returned` — boolean, bin returned from curb
-
-### State Machine
-
-```
-┌─────────────────────────────────────────────────────────────────────────────┐
-│                         TRASH BIN STATE MACHINE                             │
-├─────────────────────────────────────────────────────────────────────────────┤
-│                                                                             │
-│   ┌──────────────┐                                                          │
-│   │    HOME      │◄─────────────────────────────────────────────────────┐   │
-│   │              │                                                      │   │
-│   │  (bin at     │                                                      │   │
-│   │   house)     │                                                      │   │
-│   └──────┬───────┘                                                      │   │
-│          │                                                              │   │
-│          │ movement detected + orientation change                       │   │
-│          ▼                                                              │   │
-│   ┌──────────────┐                                                      │   │
-│   │   AT_CURB    │                                                      │   │
-│   │              │                                                      │   │
-│   │  (awaiting   │                                                      │   │
-│   │  pickup)     │                                                      │   │
-│   └──────┬───────┘                                                      │   │
-│          │                                                              │   │
-│          │ fill_level drops significantly (emptied)                     │   │
-│          ▼                                                              │   │
-│   ┌──────────────┐                                                      │   │
-│   │   EMPTIED    │                                                      │   │
-│   │              │                                                      │   │
-│   │  (pickup     │                                                      │   │
-│   │  confirmed)  │                                                      │   │
-│   └──────┬───────┘                                                      │   │
-│          │                                                              │   │
-│          │ movement detected (return to house)                          │   │
-│          │                                                              │   │
-│          └──────────────────────────────────────────────────────────────┘   │
-│                                                                             │
-└─────────────────────────────────────────────────────────────────────────────┘
-```
+**Rationale:** The exception check needs to run at a specific time (00:00:00), not "sometime after overnight begins." Period transitions are for behavior changes; the exception check is a scheduled audit.
 
 ### MQTT Topics
 
-**State (retained):**
-```
-highland/state/driveway/trash_bin
-highland/state/driveway/recycling_bin
-```
-
-**Events:**
-```
-highland/event/driveway/trash_bin/moved_to_curb
-highland/event/driveway/trash_bin/emptied
-highland/event/driveway/trash_bin/returned
-```
-
-### Notifications
-
-| Trigger | Severity | Message |
-|---------|----------|---------|
-| Collection day reminder (via calendar) | `low` | "Trash day tomorrow — bins are at X%" |
-| Bin not at curb by threshold time | `medium` | "Trash day — bins not yet at curb" |
-| Pickup confirmed | `low` | "Trash collected" |
-| Bin not returned by evening | `low` | "Bins still at curb" |
+See **MQTT_TOPICS.md §Mailbox** for full topic definitions.
 
 ---
 
-## LoRaWAN Integration
+## Driveway Bin Sensors — EM320-TILT
 
-### TTN → Node-RED Path
+### Purpose
+
+Track trash and recycling bin location (at house vs. at curb) and pickup status. Two independent sensors, two independent state machines.
+
+### Zone Detection via RSSI
+
+No dedicated zone sensors. Instead, use RSSI/SNR from the gateway uplink metadata to infer zone:
+
+- **HOME zone:** Strong signal (bin near house, close to gateway)
+- **AWAY zone:** Weak signal (bin at curb, far from gateway)
+
+**Thresholds:** Calibrate during implementation. Expected pattern:
+- HOME: RSSI > -90 dBm
+- AWAY: RSSI < -100 dBm
+- Hysteresis band: -90 to -100 dBm (no transition in this range)
+
+### State Machine (per bin)
 
 ```
-Sensor → LoRaWAN → TTN Network Server → TTN MQTT Integration → Node-RED
+┌─────────────────────────────────────────────────────────────┐
+│                          HOME                               │
+│  • Bin is at house                                          │
+│  • Strong RSSI                                              │
+└─────────────────────────────────────────────────────────────┘
+           │
+           │ RSSI drops below AWAY threshold (debounced)
+           ▼
+┌─────────────────────────────────────────────────────────────┐
+│                     AWAY_SETTLING                           │
+│  • Bin moved toward curb                                    │
+│  • Debounce period (avoid false triggers from              │
+│    momentary signal dips)                                   │
+└─────────────────────────────────────────────────────────────┘
+           │
+           │ RSSI remains low for debounce period
+           ▼
+┌─────────────────────────────────────────────────────────────┐
+│                          AWAY                               │
+│  • Bin is at curb                                           │
+│  • Waiting for pickup                                       │
+└─────────────────────────────────────────────────────────────┘
+           │
+           │ X-axis rotation ≥ 85° (bin tipped)
+           ▼
+┌─────────────────────────────────────────────────────────────┐
+│                       PICKED_UP                             │
+│  • Bin was serviced (emptied)                               │
+│  • Still at curb                                            │
+└─────────────────────────────────────────────────────────────┘
+           │
+           │ RSSI rises above HOME threshold (debounced)
+           ▼
+┌─────────────────────────────────────────────────────────────┐
+│                        RETURNED                             │
+│  • Bin brought back to house                                │
+│  • Transitions to HOME on next uplink                       │
+└─────────────────────────────────────────────────────────────┘
 ```
 
-**TTN MQTT Integration:**
-- Node-RED subscribes to TTN MQTT broker
-- Topic structure: `v3/{application_id}/devices/{device_id}/up`
-- Payload includes decoded sensor data (configured in TTN payload formatter)
+### Tilt Detection
 
-### Payload Format
+The EM320-TILT reports X/Y/Z axis angles. Pickup detection uses X-axis (rotation when truck mechanism tips the bin):
 
-Sensors transmit compact binary payloads to minimize airtime. TTN payload formatter decodes to JSON before MQTT delivery.
+- **Threshold:** X-axis ≥ 85° from vertical
+- **Trigger:** Rising edge (transition from <85° to ≥85°)
+- **State guard:** Only fire `picked_up` event if current state is `AWAY`
 
-**Mailbox sensor payload (example):**
-```
-Byte 0: event_type (0x01 = door_open, 0x02 = door_close, 0x03 = slot_trigger)
-Byte 1: battery_voltage (scaled, e.g., value * 0.02 + 2.0 = voltage)
-Byte 2: temperature (signed, °C)
-```
+### Independent State Machines
 
-**TTN decoder output:**
-```json
-{
-  "event_type": "door_open",
-  "battery_voltage": 3.2,
-  "temperature": 22
-}
-```
+Trash and recycling bins have separate state machines. It is normal for:
+- One bin to be `AWAY` while the other is `HOME` (e.g., trash day but not recycling day)
+- Both to be `AWAY` (both taken to curb)
+- Pickup events to occur at different times (separate truck schedules)
 
-### Node-RED Processing
+### MQTT Topics
 
-1. Subscribe to TTN MQTT topics
-2. Parse decoded payload
-3. Update state machine based on event_type
-4. Publish to `highland/` topics (state and events)
-5. Trigger notifications as appropriate
+See **MQTT_TOPICS.md §Driveway Bins** for full topic definitions.
 
 ---
 
-## Power Budget
+## Sensor Configuration
 
-### Mailbox Sensor
+### EM300-MCS (Mailbox)
 
-**Target:** 1+ year battery life on 2x AA lithium (non-rechargeable, cold-tolerant)
+| Parameter | Value | Notes |
+|-----------|-------|-------|
+| Reporting interval | 15 minutes | Heartbeat; door events are immediate |
+| Door event mode | On change | Transmit on open and close |
+| Confirmed uplinks | No | Class A, unconfirmed |
 
-**Assumptions:**
-- Average 2 deliveries/day (2 door events + potential slot events)
-- Each transmission: ~50mA for ~100ms
-- Sleep current: < 5µA (STM32WLE5 STOP2 mode)
+### EM320-TILT (Bins)
 
-**Rough calculation:**
-- Active: 2 events × 50mA × 0.1s = 10mAs/day
-- Sleep: 24h × 3600s × 5µA = 432mAs/day
-- Total: ~442mAs/day = ~161 mAh/year
-- 2x AA lithium: ~6000 mAh → ~37 years theoretical
-
-Real-world factors (self-discharge, cold weather, transmit retries) reduce this significantly, but 1+ year is highly achievable.
-
-### Trash Bin Sensor
-
-**Target:** 6+ months battery life, solar-assisted if possible
-
-**Considerations:**
-- Ultrasonic ranging is more power-hungry than reed switch
-- May require periodic fill-level checks (hourly?) vs. event-driven only
-- Solar panel on lid could extend battery life significantly
+| Parameter | Value | Notes |
+|-----------|-------|-------|
+| Reporting interval | 15 minutes | Heartbeat with current angles |
+| Angle threshold | 85° | Tilt event trigger |
+| Angle axis | X | Rotation axis for pickup detection |
+| Confirmed uplinks | No | Class A, unconfirmed |
 
 ---
 
-## Enclosures
+## Node-RED Flow Structure
 
-### Mailbox Sensor
+### LoRaWAN Decoder Flow
 
-- Mount inside mailbox, protected from weather
-- Reed switch on door hinge side
-- Magnet on door
-- IR break-beam across slot opening (if implemented)
-- Antenna routing for LoRaWAN signal
-
-### Trash Bin Sensor
-
-- Weatherproof enclosure inside lid
-- Ultrasonic sensor facing down into bin
-- Accelerometer for movement/orientation detection
-- Consider solar panel integration on lid exterior
-
----
-
-## Open Questions
-
-- [ ] TTN vs Helium — coverage validation at property location
-- [ ] Retrieval confirmation mechanism — start with implicit, evaluate heuristics
-- [ ] Bin sensor power budget — solar panel sizing if needed
-- [ ] Antenna design for mailbox enclosure — signal strength at ~300ft from house
-- [ ] Recycling schedule handling — different pickup day than trash
-- [ ] Slot delivery detection — IR break-beam reliability in various lighting conditions
-
----
-
-## Implementation Sequence
-
-1. **TTN account setup** — Create application, configure MQTT integration
-2. **RAK3172 dev kit** — Validate LoRaWAN connectivity from property
-3. **Mailbox prototype** — Reed switch + basic state machine in Node-RED
-4. **Field deployment** — Enclosure, battery, antenna optimization
-5. **Trash bin prototype** — Ultrasonic + accelerometer
-6. **Solar evaluation** — If needed for trash bin power budget
-
----
-
-## Email Notifications via IMAP
-
-### Overview
-
-Some LoRaWAN-related notifications may arrive via email (e.g., TTN service alerts, delivery service integrations). These are ingested via IMAP polling against the household mailbox.
-
-**Mailbox:** `highland@ferris.network` (Dynu-hosted, standard IMAP/SMTP)
-
-### IMAP Polling Pattern
-
-Node-RED polls the IMAP inbox at a configurable interval (e.g., every 5 minutes). Matching emails are processed and then **moved to a processed folder** rather than deleted. A cleanup job purges the processed folder after a retention period (e.g., 14 days).
-
-**Why move rather than delete:**
-- Preserves audit trail
-- Allows manual review of processed messages
-- Recoverable if processing logic has bugs
-
-### Folder Structure
+Receives raw TTN uplinks, decodes Milesight payloads, routes to device-specific handlers.
 
 ```
-INBOX                    ← polling target
-└── Processed            ← destination for processed messages
-    └── (auto-purged after 14 days)
+[TTN MQTT In] → [Decode Payload] → [Route by Device]
+                                         │
+                       ┌─────────────────┼─────────────────┐
+                       ▼                 ▼                 ▼
+                [Mailbox Handler]  [Trash Handler]  [Recycling Handler]
 ```
 
-### Node-RED Implementation
+### Mailbox Flow
 
-**Nodes:** `node-red-node-email` (IMAP support)
+- Subscribes to decoded mailbox sensor events
+- Subscribes to USPS email events (from Email Poller flow)
+- Subscribes to `highland/event/scheduler/midnight`
+- Runs state machine in flow context
+- Publishes to `highland/state/mailbox/delivery` (retained)
+- Publishes events to `highland/event/mailbox/*`
 
-**Flow pattern:**
-1. IMAP poll node checks INBOX
-2. Filter node matches subject/sender patterns
-3. Processing node extracts relevant data
-4. Move node relocates message to Processed folder
-5. Downstream logic (state update, notification, etc.)
+### Bin Monitor Flow
 
-**Credentials:** Store in `secrets.json` under `imap` block:
-```json
-{
-  "imap": {
-    "host": "mail.dynu.com",
-    "port": 993,
-    "secure": true,
-    "user": "highland@ferris.network",
-    "password": "..."
-  }
-}
-```
+- Subscribes to decoded bin sensor events
+- Runs two independent state machines in flow context
+- Publishes to `highland/state/driveway/{trash|recycling}_bin` (retained)
+- Publishes events to `highland/event/driveway/{trash|recycling}_bin/*`
+
+### Email Poller Flow
+
+- Polls IMAP for USPS Informed Delivery emails
+- Parses subject line to classify email type
+- Publishes internal events for Mailbox flow consumption
+- Moves processed emails to `processed` folder
+- Runs 14-day purge on `processed` folder
 
 ---
 
-*Last Updated: 2026-03-10*
+## Home Assistant Entities
+
+All entities registered via MQTT Discovery.
+
+### Mailbox
+
+| Entity | Type | Notes |
+|--------|------|-------|
+| Mailbox Delivery State | sensor | State machine state |
+| Mailbox Door | binary_sensor | Open/closed |
+
+### Driveway Bins
+
+| Entity | Type | Notes |
+|--------|------|-------|
+| Trash Bin State | sensor | State machine state |
+| Trash Bin RSSI | sensor | Signal strength (diagnostic) |
+| Trash Bin Battery | sensor | Battery percentage |
+| Recycling Bin State | sensor | State machine state |
+| Recycling Bin RSSI | sensor | Signal strength (diagnostic) |
+| Recycling Bin Battery | sensor | Battery percentage |
+
+---
+
+## Open Items
+
+| Item | Notes |
+|------|-------|
+| TTN application setup | Create application, add devices, configure MQTT integration |
+| RSSI threshold calibration | Test with bins at house and curb to determine thresholds |
+| Email polling interval | Balance responsiveness vs. IMAP load (start with 5 minutes) |
+| Confirmation email lag window | Start with 2 hours, adjust based on observed USPS timing |
+| Gateway placement | Optimize for coverage of both mailbox and curb locations |
+
+---
+
+*Last Updated: 2026-03-11*
