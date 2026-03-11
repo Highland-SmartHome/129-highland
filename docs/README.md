@@ -16,8 +16,15 @@ Ground-up rebuild of a 6-year-old Home Assistant infrastructure. The goal is a d
 |----------|---------|-------------------|
 | **ARCHITECTURE.md** | Hardware allocation, topology, backup strategy, migration approach | System-level questions, hardware decisions, recovery scenarios |
 | **EVENT_ARCHITECTURE.md** | MQTT topic structure, payloads, periods, command/event patterns | Inter-flow communication, adding new topics, message formats |
+| **MQTT_TOPICS.md** | Authoritative registry of all `highland/` topics | Adding/modifying topics, payload schemas, publisher/consumer mapping |
 | **ENTITY_NAMING.md** | Naming conventions for HA entities, disambiguation rules | Adding new devices, renaming entities, ensuring consistency |
 | **NODERED_PATTERNS.md** | Flow organization, utilities, config management, logging, notifications, health monitoring | Building/modifying flows, implementing new utilities |
+| **VIDEO_PIPELINE.md** | Camera motion detection → AI triage → notification | Video analysis architecture, NVR integration, cooldown/kill switch |
+| **WEATHER_FLOW.md** | Weather data synthesis (Tempest + Pirate Weather) | Weather automation, precipitation events, polling behavior |
+| **CALENDAR_INTEGRATION.md** | Google Calendar bridge for automation triggers | Camera suppression, planned events, kill switch UX |
+| **LORA.md** | LoRaWAN sensors (mailbox, driveway bins) | Mailbox state machine, bin tracking, RSSI-based zone detection |
+| **ASSIST_PIPELINE.md** | HA Assist voice pipeline with Marvin persona | Voice control, STT/TTS, conversation agents, wake word |
+| **GARAGE_DOOR.md** | Konnected GDO blaQ garage door integration | SSE bridge, Smart Reversing, ZEN37 wall remote |
 | **RUNBOOK.md** | Step-by-step implementation guide | Building infrastructure, phase-by-phase setup |
 | **AUTOMATION_BACKLOG.md** | Ideas for future automations | Capturing new ideas, reviewing what's planned |
 
@@ -28,8 +35,8 @@ Ground-up rebuild of a 6-year-old Home Assistant infrastructure. The goal is a d
 These have been discussed and decided. Reference the relevant doc for rationale.
 
 | Decision | Rationale |
-|----------|----------|
-| **Three-box architecture** | HAOS, Protocol Nerve Center (MQTT/Z2M/Z-Wave), Node-RED/Utility — physical separation for resiliency |
+|----------|-----------|
+| **Three-box architecture** | HAOS, Communication Hub (MQTT/Z2M/Z-Wave), Workflow — physical separation for resiliency |
 | **MQTT as control plane** | Node-RED subscribes directly to Z2M/Z-Wave topics; critical automations work without HA |
 | **MQTT-triggered backups** | Each host owns its backup via MQTT command; no SSH between hosts |
 | **File-based config** | External JSON files in `/home/nodered/config/`; `secrets.json` gitignored |
@@ -47,30 +54,32 @@ These have been discussed and decided. Reference the relevant doc for rationale.
 
 | Role | Hardware | Status |
 |------|----------|--------|
-| **HAOS** | Dell OptiPlex 7050 SFF (i7-7700, 16GB) | Needs SSD (~$80) — on order |
-| **Node-RED / Utility** | Dell OptiPlex 7050 SFF (i7-7700, 16GB) | Needs SSD (~$80) — on order |
-| **Protocol Nerve Center** | Ryzen 5 3550H MFF (16GB, 512GB SSD) | Ready |
-| **Spare / Future Edge AI** | Dell OptiPlex 7050 SFF (i7-7700, 16GB) | Deferred |
+| **HAOS** | Dell OptiPlex 7050 SFF (i7-7700, 16GB) | Ready |
+| **Workflow** | Dell OptiPlex 7050 SFF (i7-7700, 16GB) | Ready |
+| **Communication Hub** | Ryzen 5 3550H MFF (16GB, 512GB SSD) | Ready |
+| **Edge AI Box** | Dell OptiPlex 7050 SFF (i7-7700, 32GB, Coral TPU) | Ready |
 
 ---
 
 ## Current State
 
-**Phase:** Documentation complete, awaiting hardware
+**Phase:** Documentation complete, hardware in-hand — ready to build
 
 **What's done:**
 - Architecture finalized (hardware, topology, backup strategy)
 - Event architecture defined (topics, payloads, periods)
+- MQTT topic registry established (authoritative reference)
 - Entity naming standards established
 - Node-RED patterns documented (flows, config, logging, notifications, health monitoring)
+- Domain-specific designs complete (video pipeline, weather, calendar, LoRaWAN, voice, garage door)
 - Implementation runbook complete
-- GitHub repository seeded (`Highland-SmartHome/129-highland`)
+- GitHub repository synced (`Highland-SmartHome/129-highland`)
 - All open questions resolved
 
 **What's next:**
-1. Hardware arrives (SSDs on order)
-2. Begin build: Protocol Nerve Center first, then HAOS, then Node-RED
-3. Commit working configs to GitHub as baseline
+1. Carve out time to begin build
+2. Build order: Communication Hub first, then HAOS, then Workflow, then Edge AI
+3. Commit working configs to GitHub as baseline after each machine
 
 ---
 
@@ -97,16 +106,16 @@ These have been discussed and decided. Reference the relevant doc for rationale.
 
 ## Protocols
 
-**Updating project documentation:**
+**Modifying project-level files:**
 
-When a project-level document needs to be updated during a session:
+Project files (`/mnt/project/`) are read-only from Claude's perspective. To modify them:
 
-1. **Create the updated document as a session artifact** — Generate the complete, revised file (not direct `str_replace` on project files, which is fragile and inconsistent)
-2. **Always present the artifact** — Use `present_files` after creating/updating any artifact. Viewing files manually without presentation can return stale/cached versions
-3. **User reviews the artifact** — Validate the changes are correct and complete
-4. **User promotes to project level** — Delete the old project file, then promote the session artifact to replace it
+1. **Create a session copy** — Copy the file to `/mnt/user-data/outputs/` for editing
+2. **Make changes** — Edit the session copy as needed
+3. **Always present the file** — Use `present_files` after every modification (this busts a caching bug that can return stale content)
+4. **User promotes** — Manually delete the old project-level file, then promote the session artifact to take its place
 
-This workflow avoids `str_replace` fragility (exact-match failures, stale context issues) and provides a clean review checkpoint. It also works consistently across Claude Desktop and claude.ai.
+This workflow avoids fragile `str_replace` operations and provides a clean review checkpoint before changes land in project context.
 
 **IMPORTANT: Always update the "Last Updated" timestamp** at the bottom of any document when making changes. This is easy to forget — make it habitual.
 
@@ -124,4 +133,4 @@ This workflow avoids `str_replace` fragility (exact-match failures, stale contex
 
 ---
 
-*Last Updated: 2026-03-10*
+*Last Updated: 2026-03-11*
