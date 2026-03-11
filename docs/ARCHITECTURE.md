@@ -35,22 +35,20 @@ Ground-up rebuild of Home Assistant infrastructure, prioritizing **resiliency**,
 
 | Role | Hardware | CPU | RAM | Storage | Status |
 |------|----------|-----|-----|---------|--------|
-| **HAOS** | Dell OptiPlex 7050 SFF | i7-7700 4.2GHz | 16GB | 480GB SSD | To buy (~$80) |
-| **Node-RED / Utility** | Dell OptiPlex 7050 SFF | i7-7700 4.2GHz | 16GB | 480GB SSD | To buy (~$80) |
+| **HAOS** | Dell OptiPlex 7050 SFF | i7-7700 4.2GHz | 16GB | 480GB SSD | ✅ Ready |
+| **Workflow** | Dell OptiPlex 7050 SFF | i7-7700 4.2GHz | 16GB | 480GB SSD | ✅ Ready |
+| **Communication Hub** | MFF (Ryzen 5) | Ryzen 5 3550H | 16GB | 512GB SSD | ✅ Ready |
+| **Edge AI Box** | Dell OptiPlex 7050 SFF | i7-7700 4.2GHz | 32GB | 480GB SSD | ✅ Ready |
 
-**Node-RED / Utility Box Services:**
+**Workflow Services:**
 - Node-RED (primary automation engine)
 - code-server (VS Code web edition) — embedded as HA sidebar panel
 - Future utilities as needed
 
-| **Protocol Nerve Center** | MFF (Ryzen 5) | Ryzen 5 3550H | 16GB | 512GB SSD | Ready |
-| **Spare / Future Edge AI** | Dell OptiPlex 7050 SFF | i7-7700 4.2GHz | 16GB | TBD | Deferred |
-
 **Storage Notes:**
-- Targeting Crucial MX500 or Samsung 870 EVO 480GB class (~$80 each)
-- 32GB RAM upgrade kits available for two SFFs — held in reserve until memory pressure observed
-- Coral TPU (PCIe) available for future Edge AI build
-- Reolink NVR boxed for future camera infrastructure
+- 32GB RAM in Edge AI box for LLM headroom alongside Coral TPU vision inference
+- Coral TPU (PCIe) installed in Edge AI box
+- Reolink NVR ready for camera infrastructure
 
 ### New Coordinators
 - Sonoff Zigbee USB (latest) — for new Z2M instance
@@ -62,8 +60,9 @@ Ground-up rebuild of Home Assistant infrastructure, prioritizing **resiliency**,
 
 ```
 ┌─────────────────────────┐
-│   HAOS (Dedicated HW)   │
+│        HAOS             │
 │   Dell OptiPlex SFF     │
+│   http(s)://home.local  │
 │                         │
 │   • Home Assistant      │
 │   • Frontend/UI         │
@@ -74,23 +73,22 @@ Ground-up rebuild of Home Assistant infrastructure, prioritizing **resiliency**,
             │ MQTT / WebSocket
             ▼
 ┌─────────────────────────┐     ┌─────────────────────────┐
-│  Protocol Nerve Center  │     │   Automation Engine     │
-│  Dell OptiPlex MFF      │     │   Dell OptiPlex SFF     │
-│                         │     │   (or dedicated HW)     │
-│   • MQTT Broker         │     │                         │
-│   • Zigbee2MQTT         │◄───►│   • Node-RED            │
-│   • Z-Wave JS UI        │     │   • (Ubuntu host)       │
-│                         │     │   • Potential other svcs│
+│   Communication Hub     │     │       Workflow          │
+│   Dell OptiPlex MFF     │     │   Dell OptiPlex SFF     │
+│   http(s)://hub.local   │     │ http(s)://workflow.local│
+│                         │     │                         │
+│   • MQTT Broker         │     │   • Node-RED            │
+│   • Zigbee2MQTT         │◄───►│   • (Ubuntu host)       │
+│   • Z-Wave JS UI        │     │   • Potential other svcs│
 └─────────────────────────┘     └─────────────────────────┘
             │
-            │ (Future)
             ▼
 ┌─────────────────────────┐
 │   Edge AI Box           │
 │   (SFF + Coral TPU)     │
 │                         │
-│   • DOODS2              │
 │   • CodeProject.AI      │
+│   • Ollama (LLM)        │
 │   • Camera triage       │
 └─────────────────────────┘
 ```
@@ -103,7 +101,7 @@ Ground-up rebuild of Home Assistant infrastructure, prioritizing **resiliency**,
 - **Option A:** Dedicated bare-metal Ubuntu box (physical separation) ✓ **SELECTED**
 - **Option B:** VM/container on same host as HA (logical separation only)
 
-### Protocol Nerve Center Stack
+### Communication Hub Stack
 - **Decision:** Docker Compose on minimal Linux
 - **OS:** Ubuntu Server 24.04 LTS
 - **Services:** Mosquitto, Zigbee2MQTT, Z-Wave JS UI (containerized)
@@ -165,15 +163,19 @@ zigbee2mqtt/garage_motion_sensor → [Garage Flow] → highland/event/garage/mot
 - Bare metal for HAOS, bare metal Ubuntu for Node-RED currently favored
 - Proxmox could consolidate but adds complexity
 
-### Storage Strategy
-- All SFF boxes need HDDs/SSDs — TBD on specs and configuration
-
 ---
 
 ## Network
 
+| System | Hostname | Internal URL | External URL |
+|--------|----------|--------------|--------------|
+| HAOS | `home` | `http(s)://home.local` | `https://highland.ferris.network` (after decom) |
+| Communication Hub | `hub` | `http(s)://hub.local` | None |
+| Workflow | `workflow` | `http(s)://workflow.local` | None |
+| Network Video Recorder | `nvr` | `http(s)://nvr.local` | None |
+
 - **Current topology:** Flat network, no VLANs
-- **Remote access:** Nabu Casa with custom domain (FQDN)
+- **Remote access:** Nabu Casa with custom domain (FQDN) — enabled after live system decommissioned
 - **Future:** Network segmentation project planned but out of scope for this rebuild
 
 **Remote Access Scope:**
@@ -212,16 +214,13 @@ The new infrastructure is built alongside the existing live system. This is not 
 ### Migration Sequence (High-Level)
 
 1. **Baseline hardware** — Install OS, Docker, base services on all boxes
-2. **Protocol Nerve Center online** — Mosquitto, Z2M, Z-Wave JS UI running (empty networks)
+2. **Communication Hub online** — Mosquitto, Z2M, Z-Wave JS UI running (empty networks)
 3. **HAOS online** — Fresh install, connect to MQTT, Z-Wave JS via WebSocket
-4. **Node-RED online** — Fresh install, connect to MQTT, establish event architecture
+4. **Workflow online** — Fresh install, connect to MQTT, establish event architecture
 5. **Migrate devices** — One at a time, pair to new coordinators, verify in HA
 6. **Rebuild flows** — One at a time, referencing old flows for logic but implementing fresh
 7. **Validate** — Run parallel until confidence achieved
 8. **Decommission old system**
-
----
-
 
 ---
 
@@ -239,8 +238,8 @@ Each host owns its own backup, triggered via MQTT command. No SSH between hosts 
 | Component | What to Backup | Method |
 |-----------|----------------|--------|
 | **HAOS** | Full HA backup (config, database, add-ons) | Native HA backup + Nabu Casa cloud |
-| **Protocol Nerve Center** | Docker Compose file, Mosquitto config, Z2M data, Z-Wave JS data | Local script tars config volumes |
-| **Node-RED Host** | Docker Compose file, flows (JSON), settings, credentials, config files | Local script exports flows + tars data |
+| **Communication Hub** | Docker Compose file, Mosquitto config, Z2M data, Z-Wave JS data | Local script tars config volumes |
+| **Workflow Host** | Docker Compose file, flows (JSON), settings, credentials, config files | Local script exports flows + tars data |
 
 ### MQTT-Triggered Backup Architecture
 
@@ -259,16 +258,16 @@ Scheduler (Node-RED)
       v
 Backup Utility Flow
       |
-      +---> highland/command/backup/trigger/pnc
+      +---> highland/command/backup/trigger/hub
       |           |
       |           v
-      |     Protocol Nerve Center backup script
+      |     Communication Hub backup script
       |           |
-      |           +---> highland/event/backup/completed {host: "pnc"}
+      |           +---> highland/event/backup/completed {host: "hub"}
       |
       +---> (Node-RED backs itself up locally)
       |           |
-      |           +---> highland/event/backup/completed {host: "nr"}
+      |           +---> highland/event/backup/completed {host: "workflow"}
       |
       +---> HA REST API: trigger backup
                   |
@@ -279,7 +278,7 @@ Backup Utility collects results, notifies on failure
 
 ### Backup Scripts (Per Host)
 
-**Protocol Nerve Center (`/usr/local/bin/highland-backup.sh`):**
+**Communication Hub (`/usr/local/bin/highland-backup.sh`):**
 ```bash
 #!/bin/bash
 # Triggered by: MQTT listener (mosquitto_sub) or cron fallback
@@ -288,7 +287,7 @@ Backup Utility collects results, notifies on failure
 # Publishes result to MQTT
 ```
 
-**Node-RED Host:**
+**Workflow Host:**
 - Flow export via Node-RED admin API
 - Tar `/home/nodered/config/` and `/home/nodered/data/`
 - Handled by Backup Utility Flow (backs itself up)
@@ -306,9 +305,9 @@ Backup Utility collects results, notifies on failure
 
 | Scenario | Recovery Approach |
 |----------|-------------------|
-| **HAOS failure** | Restore from Nabu Casa cloud or local backup; Protocol Nerve Center + Node-RED continue running |
-| **Protocol Nerve Center failure** | Redeploy Docker Compose, restore config volumes from backup; devices remain paired in coordinator database |
-| **Node-RED failure** | Redeploy Docker Compose, import flow JSON, restore config files; MQTT events queue until back online |
+| **HAOS failure** | Restore from Nabu Casa cloud or local backup; Communication Hub + Workflow continue running |
+| **Communication Hub failure** | Redeploy Docker Compose, restore config volumes from backup; devices remain paired in coordinator database |
+| **Workflow failure** | Redeploy Docker Compose, import flow JSON, restore config files; MQTT events queue until back online |
 | **Total loss** | Restore all from backup destination; re-pair devices if coordinator database lost |
 
 ---
@@ -316,7 +315,7 @@ Backup Utility collects results, notifies on failure
 ## Future Considerations
 
 - **Edge AI integration** — Coral TPU for camera feed triage before cloud analysis (Gemini)
-- **Reolink NVR deployment** — Replace/supplement Home Hub
+- **Network Video Recorder deployment** — Replace/supplement Home Hub
 - **Weather automation expansion** — Map compositing, image manipulation (needs horsepower)
 - **Room-based automations** — Light switches, presence detection, etc.
 
@@ -325,10 +324,11 @@ Backup Utility collects results, notifies on failure
 ## Related Documents
 
 | Document | Status | Content |
-|----------|--------|--------|
+|----------|--------|---------|
 | **ENTITY_NAMING.md** | ✅ Complete | Naming conventions, disambiguation, device patterns |
 | **EVENT_ARCHITECTURE.md** | ✅ Complete | MQTT topics, payloads, periods, two-layer model |
 | **NODERED_PATTERNS.md** | ✅ Complete | Flow organization, logging, notifications, config management, health monitoring |
+| **GARAGE_DOOR.md** | ✅ Complete | Konnected GDO blaQ — integration design, API surface, Node-RED bridge architecture |
 
 ## Deferred Items
 
@@ -341,4 +341,4 @@ Backup Utility collects results, notifies on failure
 
 ---
 
-*Last Updated: 2026-03-03*
+*Last Updated: 2026-03-11*
