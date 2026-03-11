@@ -1,4 +1,4 @@
-# Node-RED Patterns &amp; Conventions
+# Node-RED Patterns & Conventions
 
 ## Overview
 
@@ -72,7 +72,7 @@ External process that monitors Node-RED and pings Healthchecks.io. Runs on the N
 # Highland Watchdog - Monitors Node-RED heartbeat via MQTT
 # Pings Healthchecks.io on success, fails silent on miss
 
-MQTT_HOST="pnc.local"
+MQTT_HOST="hub.local"
 MQTT_USER="highland"
 MQTT_PASS="from-env-or-file"
 HEARTBEAT_TOPIC="highland/status/node_red/heartbeat"
@@ -128,7 +128,7 @@ Flows are named by their area or utility function:
 
 ---
 
-## Link Nodes &amp; Groups
+## Link Nodes & Groups
 
 ### Preferred Over Subflows For:
 - Keeping logic visible within a flow
@@ -316,7 +316,7 @@ function getAreasByCapability(capability) {
   for (const [area, areaData] of Object.entries(flowRegistry)) {
     const matchingDevices = areaData.devices.filter(deviceId => {
       const device = deviceRegistry[deviceId];
-      return device &amp;&amp; device.capabilities.includes(capability);
+      return device && device.capabilities.includes(capability);
     });
     
     if (matchingDevices.length > 0) {
@@ -1675,7 +1675,7 @@ Two-tier monitoring: local detailed tracking via MQTT, external dead-man's-switc
 └─────────────────────────────────────────────────────────────────────┘
 
 ┌─────────────────────────────────────────────────────────────────────┐
-│  Watchdog Script (Protocol Nerve Center)                            │
+│  Watchdog Script (Communication Hub)                                │
 │                                                                     │
 │  Monitors: Node-RED (via heartbeat on MQTT)                         │
 │  Publishes: highland/status/node_red/health                         │
@@ -1704,13 +1704,13 @@ Two-tier monitoring: local detailed tracking via MQTT, external dead-man's-switc
 ### Per-Service Checks
 
 | Service | Responsiveness Check | Threshold Metrics |
-|---------|----------------------|-------------------|
+|---------|---------------------|-------------------|
 | **MQTT broker** | Publish/subscribe test | Host disk, CPU, memory |
 | **Zigbee2MQTT** | HTTP API or MQTT bridge topic | Devices online/offline, host resources |
 | **Z-Wave JS UI** | WebSocket or HTTP API | Nodes online/dead, host resources |
 | **Home Assistant** | HTTP API (`/api/`) | DB size, host resources |
 | **Node-RED** | HTTP admin API or heartbeat | Host resources |
-| **Protocol Nerve Center (host)** | Implicit via services | Disk, CPU, memory |
+| **Communication Hub (host)** | Implicit via services | Disk, CPU, memory |
 | **Node-RED host** | Implicit via Node-RED | Disk, CPU, memory |
 
 ### Topics
@@ -1830,7 +1830,7 @@ Rationale: Internal checks should not fail transiently. If something fails once,
 | Node-RED goes down | Healthchecks.io (external alert) |
 | MQTT goes down | Healthchecks.io (Node-RED can't notify without MQTT) |
 
-### Watchdog Script (Protocol Nerve Center)
+### Watchdog Script (Communication Hub)
 
 Simple script running on cron (every minute):
 
@@ -1846,7 +1846,7 @@ Simple script running on cron (every minute):
 
 ### Future Enhancement
 
-Lightweight MQTT health listener (Python/Go) on Protocol Nerve Center:
+Lightweight MQTT health listener (Python/Go) on Communication Hub:
 - Subscribes to `highland/status/#`
 - Tracks all service health centrally
 - Handles notifications independently of Node-RED
