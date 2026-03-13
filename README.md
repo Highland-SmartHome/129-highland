@@ -1,6 +1,6 @@
 # 129 Highland — Smart Home Infrastructure
 
-Ground-up rebuild of a 6-year-old Home Assistant infrastructure. The goal is a distributed, resilient system where protocol coordinators and automations survive Home Assistant restarts — eliminating single points of failure.
+Ground-up rebuild of a pre-existing Home Assistant infrastructure. The goal is a distributed, resilient system where protocol coordinators and automations survive Home Assistant restarts — eliminating single points of failure.
 
 ## Architecture Overview
 
