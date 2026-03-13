@@ -169,7 +169,7 @@ zigbee2mqtt/garage_motion_sensor → [Garage Flow] → highland/event/garage/mot
 
 | System | Hostname | Internal URL | External URL |
 |--------|----------|--------------|--------------|
-| HAOS | `home` | `http(s)://home.local` | `https://highland.ferris.network` (after decom) |
+| HAOS | `home` | `http(s)://home.local` | `https://your-domain.example` (after decom) |
 | Communication Hub | `hub` | `http(s)://hub.local` | None |
 | Workflow | `workflow` | `http(s)://workflow.local` | None |
 | Network Video Recorder | `nvr` | `http(s)://nvr.local` | None |
@@ -367,4 +367,4 @@ Backup Utility collects results, notifies on failure
 
 ---
 
-*Last Updated: 2026-03-12*
+*Last Updated: 2026-03-13*

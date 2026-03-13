@@ -134,7 +134,7 @@ These have a named purpose. You wouldn't subscribe to `backup_daily` unless you'
 
 **`highland/event/` vs `highland/state/`:** An event is something that *happened* — it fires and it's gone. State is *what is currently true* — retained, always available to a restarting flow. Many domains publish both: an event when a transition occurs, and updated state reflecting the new truth.
 
-> **Authoritative namespace reference:** See MQTT_TOPICS.md for the full topic registry, payload schemas, and publisher/subscriber mapping.
+> **Authoritative namespace reference:** See MQTT_TOPICS.md for the full topic registry, payload schemas, and publisher/consumer mapping.
 
 ### Naming Convention
 - **Style:** lowercase with underscores (e.g., `living_room`, `front_porch`)
@@ -148,7 +148,7 @@ highland/status/{service}/{check}                  # health and liveness
 highland/command/{target}/{action}                 # imperative instructions
 ```
 
-- `highland/` — Namespace for home automation (matches FQDN: `highland.ferris.network`)
+- `highland/` — Namespace for home automation (matches FQDN: `your-domain.example`)
 - `{source}` / `{domain}` / `{service}` / `{target}` — Area or utility name (lowercase, underscores)
 - `{event_type}` — What happened (lowercase, underscores)
 - `{entity}` — Optional, when consumers need entity-level granularity
@@ -432,4 +432,4 @@ Flows use both: the state topic on startup for recovery, the event topic during 
 
 ---
 
-*Last Updated: 2026-03-10*
+*Last Updated: 2026-03-13*

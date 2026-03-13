@@ -22,13 +22,13 @@ The primary initial consumer is the video pipeline's camera kill switch — cert
 
 ### Core Concept
 
-Each camera has a dedicated email address on the `highland.ferris.network` domain. To suppress a camera during a calendar event, **invite it as a guest**. That's the entire authoring workflow.
+Each camera has a dedicated email address on the `your-domain.example` domain. To suppress a camera during a calendar event, **invite it as a guest**. That's the entire authoring workflow.
 
 ```
-camera.driveway@highland.ferris.network
-camera.rear_yard@highland.ferris.network
-camera.rear_patio@highland.ferris.network
-camera.front_porch@highland.ferris.network
+camera.driveway@your-domain.example
+camera.rear_yard@your-domain.example
+camera.rear_patio@your-domain.example
+camera.front_porch@your-domain.example
 ```
 
 The Calendar Bridge reads the attendee list of each event. Any event containing one or more camera addresses triggers camera suppression for those cameras from event start to event end. Events with no camera guests are invisible to the camera pipeline entirely.
@@ -53,7 +53,7 @@ A trash day reminder, an HVAC filter change reminder, and a backyard BBQ are all
 
 ### Email Notifications
 
-Google Calendar will attempt to send invite emails to camera addresses. Since `highland.ferris.network` is already a managed domain, create a catch-all alias that discards silently. The bridge operates via Calendar API polling, not email; IMAP monitoring of these addresses adds no value.
+Google Calendar will attempt to send invite emails to camera addresses. Since `your-domain.example` is already a managed domain, create a catch-all alias that discards silently. The bridge operates via Calendar API polling, not email; IMAP monitoring of these addresses adds no value.
 
 ---
 
@@ -83,7 +83,7 @@ This correctly handles events that started while down, events that ended while d
 ### Poll Cadence
 
 | Trigger | Cadence | Purpose |
-|---------|---------|--------|
+|---------|---------|---------|
 | Periodic | Every 30 minutes | Picks up events added same-day |
 | On startup | Immediate | Reconciles state after any outage |
 | Manual | `highland/command/calendar/reload` | On-demand for just-added events |
@@ -227,10 +227,10 @@ Maintained in a dedicated config file (or alongside `device_registry.json`). Map
 ```json
 {
   "camera_guests": {
-    "camera.driveway@highland.ferris.network": "driveway",
-    "camera.rear_yard@highland.ferris.network": "rear_yard",
-    "camera.rear_patio@highland.ferris.network": "rear_patio",
-    "camera.front_porch@highland.ferris.network": "front_porch"
+    "camera.driveway@your-domain.example": "driveway",
+    "camera.rear_yard@your-domain.example": "rear_yard",
+    "camera.rear_patio@your-domain.example": "rear_patio",
+    "camera.front_porch@your-domain.example": "front_porch"
   }
 }
 ```
@@ -293,7 +293,7 @@ Any consumer that should fire side effects exactly once per event (notifications
 Calendar-driven suppression complements rather than replaces the manual kill switch.
 
 | Scenario | Mechanism |
-|----------|----------|
+|----------|-----------|
 | Planned event (cameras invited) | Calendar bridge fires start → kill switch auto-enabled |
 | Spontaneous event (not on calendar) | Manual kill switch from HA dashboard |
 | Event ends | Calendar bridge fires end → kill switch auto-disabled |
@@ -328,7 +328,7 @@ Marvin creates the event and adds the camera addresses to the guest list in one 
 
 ## Open Questions
 
-- [ ] Camera address format — `camera.driveway@highland.ferris.network` confirmed as convention; verify no conflicts with other `highland.ferris.network` mail routing
+- [ ] Camera address format — `camera.driveway@your-domain.example` confirmed as convention; verify no conflicts with other `your-domain.example` mail routing
 - [ ] Ceremony state persistence — flow context (disk-backed) is the right store, but define eviction strategy: remove entries for events whose end time is in the past to prevent unbounded growth
 - [ ] Whether `already_active` is sufficient as a ceremony guard or whether persistent sessions alone are relied upon — both are implemented, but the interaction should be validated during implementation
 
@@ -337,7 +337,7 @@ Marvin creates the event and adds the camera addresses to the guest list in one 
 ## Related Documents
 
 | Document | Relevance |
-|----------|----------|
+|----------|-----------|
 | **EVENT_ARCHITECTURE.md** | Calendar events follow standard MQTT payload conventions |
 | **NODERED_PATTERNS.md** | Calendar Bridge is a utility flow; Config Loader handles API credentials |
 | **VIDEO_PIPELINE.md** | Primary initial consumer — calendar events drive camera kill switch |
@@ -345,4 +345,4 @@ Marvin creates the event and adds the camera addresses to the guest list in one 
 
 ---
 
-*Last Updated: 2026-03-10*
+*Last Updated: 2026-03-13*

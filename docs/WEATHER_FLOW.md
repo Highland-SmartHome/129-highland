@@ -28,11 +28,11 @@ Node-RED utility flow providing weather awareness, precipitation sensing, and ac
 
 ## Location Context
 
-**Coordinates:** 41.5204, -74.06 (Gardnertown, Town of Newburgh, NY)  
+**Coordinates:** Configured in `secrets.json` as `location.lat` / `location.lon`  
 **Elevation:** 367 ft  
 **Nearest API city:** Gardnertown — confirms coordinate-based grid lookup, not population-center snap.
 
-**Microclimate note:** Hudson Valley terrain creates significant hyperlocal variation. Gardnertown sits at elevation; the Hudson River to the east creates thermal and moisture dynamics that can shift the rain/snow line within a few miles. Forecasts snapped to "City of Newburgh" or "Newburgh" would often be wrong for this location. The HRRR grid cell resolves to 41.53/-74.04 (~1.5 mi offset), which is about as good as gridded models get. Systematic bias analysis during snow events should factor in elevation and river distance.
+**Microclimate note:** Hudson Valley terrain creates significant hyperlocal variation. The property sits at elevation; the Hudson River to the east creates thermal and moisture dynamics that can shift the rain/snow line within a few miles. Forecasts snapped to a nearby city center would often be wrong for this location. The HRRR grid cell resolves to within ~1.5 mi, which is about as good as gridded models get. Systematic bias analysis during snow events should factor in elevation and river distance.
 
 ---
 
@@ -74,7 +74,7 @@ HRRR subhourly drives minutely data quality — this is the primary reason Pirat
 Response headers expose real-time consumption:
 
 | Header | Content |
-|--------|--------|
+|--------|---------|
 | `Ratelimit-Limit` | Monthly quota |
 | `Ratelimit-Remaining` | Calls remaining this month |
 | `Ratelimit-Reset` | Seconds until reset |
@@ -92,7 +92,7 @@ The core cost-control mechanism. Polling frequency scales with weather threat le
 ### States
 
 | State | Poll Interval | Purpose |
-|-------|---------------|--------|
+|-------|---------------|---------|
 | `POLL_DORMANT` | 15 min | No precipitation expected; baseline monitoring |
 | `POLL_MONITOR` | 5 min | Precipitation possible within forecast window; elevated attention |
 | `POLL_ACTIVE` | 1 min | Precipitation imminent or occurring; full resolution |
@@ -134,7 +134,7 @@ Application: When evaluating escalation thresholds, weight high-spread forecasts
 Reduce response size and processing load by excluding unneeded blocks per state:
 
 | State | `exclude` parameter |
-|-------|--------------------|
+|-------|---------------------|
 | `POLL_DORMANT` | `minutely,alerts` |
 | `POLL_MONITOR` | `alerts` |
 | `POLL_ACTIVE` | *(none)* |
@@ -161,7 +161,7 @@ Tracks the current precipitation event lifecycle. Separate from polling state.
 Uses v2 type-specific intensity fields directly rather than inferring from generic `precipIntensity` + `precipType`:
 
 | Field | Use |
-|-------|----|
+|-------|-----|
 | `rainIntensity` | Rain rate (in/hr) |
 | `snowIntensity` | Snow rate (in/hr liquid equivalent) |
 | `iceIntensity` | Freezing rain rate (in/hr) |
@@ -294,4 +294,4 @@ All threshold values are initial estimates. Calibrate against observed events.
 
 ---
 
-*Last Updated: 2026-03-05*
+*Last Updated: 2026-03-13*

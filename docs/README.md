@@ -6,7 +6,7 @@ Ground-up rebuild of an existing Home Assistant infrastructure. The goal is a di
 
 **Replaces:** A monolithic HAOS installation with Node-RED as an add-on, Zigbee coordinator on USB passthrough, and automations tightly coupled to HA availability.
 
-**Domain:** `highland.ferris.network` (Nabu Casa for remote access)
+**Domain:** `your-domain.example` (Nabu Casa for remote access)
 
 ---
 
@@ -120,6 +120,22 @@ Project files (`/mnt/project/`) are read-only from Claude's perspective. To modi
 This workflow avoids fragile `str_replace` operations and provides a clean review checkpoint before changes land in project context.
 
 **IMPORTANT: Always update the "Last Updated" timestamp** at the bottom of any document when making changes. This is easy to forget — make it habitual.
+
+**Privacy & Security in Documentation:**
+
+This repository is public. When creating or updating documents, always redact identifying information:
+- **GPS coordinates** — Use `secrets.json` references, not literal lat/lon values
+- **Domain names** — Use `your-domain.example` as a placeholder for actual FQDNs
+- **Email addresses** — Reference `secrets.json` or use generic descriptions; never include actual addresses
+- **Internal hostnames/IPs** — Use `.local` mDNS names or RFC1918 example ranges (`192.168.x.x`)
+- **API keys, tokens, passwords** — Always use placeholders (`YOUR_API_KEY`, `GENERATE_NEW_KEY`, etc.)
+
+Example patterns already in use:
+- `secrets.json` stores credentials and is `.gitignore`d
+- `thresholds.json` and other config files contain no secrets
+- Healthchecks.io UUIDs shown as `uuid-1`, `uuid-2`, etc.
+
+When in doubt, ask: *"Could someone use this information to locate or access the system?"* If yes, redact it.
 
 **Project files vs GitHub:**
 

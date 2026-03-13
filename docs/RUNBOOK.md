@@ -24,7 +24,7 @@ Step-by-step guide for building the Highland home automation infrastructure.
 | System | Hostname | Internal URL | External URL | Notes |
 |--------|----------|--------------|--------------|-------|
 | Communication Hub | `hub` | `http(s)://hub.local` | None | DHCP reservation or static |
-| HAOS | `home` | `http(s)://home.local` | `https://highland.ferris.network` (after decom) | DHCP reservation or static |
+| HAOS | `home` | `http(s)://home.local` | `https://your-domain.example` (after decom) | DHCP reservation or static |
 | Workflow | `workflow` | `http(s)://workflow.local` | None | DHCP reservation or static |
 | Network Video Recorder | `nvr` | `http(s)://nvr.local` | None | DHCP reservation or static |
 
@@ -355,7 +355,7 @@ If not using DHCP reservation, set static IP:
 2. Sign in to Nabu Casa account
 3. Configure remote access
 4. **Do NOT expose external URL yet** — wait until live instance is decommissioned
-5. Link custom domain (`highland.ferris.network`) when ready
+5. Link custom domain (`your-domain.example`) when ready
 
 ### 2.5 MQTT Integration
 
@@ -856,4 +856,4 @@ Create these flows in Node-RED to establish baseline functionality:
 
 ---
 
-*Last Updated: 2026-03-11*
+*Last Updated: 2026-03-13*
