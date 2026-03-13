@@ -2,9 +2,9 @@
 
 ## What This Is
 
-Ground-up rebuild of a 6-year-old Home Assistant infrastructure. The goal is a distributed, resilient system where protocol coordinators and automations survive Home Assistant restarts — eliminating single points of failure.
+Ground-up rebuild of an existing Home Assistant infrastructure. The goal is a distributed, resilient system where protocol coordinators and automations survive Home Assistant restarts — eliminating single points of failure.
 
-**Owner:** Joseph — 25+ years software engineering (primarily Windows, limited Linux), currently running HAOS on a Dell OptiPlex 7050 MFF with Node-RED as an add-on.
+**Replaces:** A monolithic HAOS installation with Node-RED as an add-on, Zigbee coordinator on USB passthrough, and automations tightly coupled to HA availability.
 
 **Domain:** `highland.ferris.network` (Nabu Casa for remote access)
 
@@ -19,11 +19,14 @@ Ground-up rebuild of a 6-year-old Home Assistant infrastructure. The goal is a d
 | **MQTT_TOPICS.md** | Authoritative registry of all `highland/` topics | Adding/modifying topics, payload schemas, publisher/consumer mapping |
 | **ENTITY_NAMING.md** | Naming conventions for HA entities, disambiguation rules | Adding new devices, renaming entities, ensuring consistency |
 | **NODERED_PATTERNS.md** | Flow organization, utilities, config management, logging, notifications, health monitoring | Building/modifying flows, implementing new utilities |
+| **APPLIANCE_MONITORING.md** | Power-based cycle detection for washer/dryer/dishwasher | ZEN15 integration, state machine logic, energy-gate thresholds |
 | **VIDEO_PIPELINE.md** | Camera motion detection → AI triage → notification | Video analysis architecture, NVR integration, cooldown/kill switch |
 | **WEATHER_FLOW.md** | Weather data synthesis (Tempest + Pirate Weather) | Weather automation, precipitation events, polling behavior |
 | **CALENDAR_INTEGRATION.md** | Google Calendar bridge for automation triggers | Camera suppression, planned events, kill switch UX |
 | **LORA.md** | LoRaWAN sensors (mailbox, driveway bins) | Mailbox state machine, bin tracking, RSSI-based zone detection |
+| **GARAGE_DOOR.md** | Konnected GDO blaQ integration via Node-RED bridge | SSE state streaming, REST commands, MQTT Discovery |
 | **ASSIST_PIPELINE.md** | HA Assist voice pipeline with Marvin persona | Voice control, STT/TTS, conversation agents, wake word |
+| **PERSISTENT_MEMORY.md** | AI assistant memory architecture and defense layers | Memory poisoning defense, tool autonomy, voice identity |
 | **RUNBOOK.md** | Step-by-step implementation guide | Building infrastructure, phase-by-phase setup |
 | **AUTOMATION_BACKLOG.md** | Ideas for future automations | Capturing new ideas, reviewing what's planned |
 
@@ -132,4 +135,4 @@ This workflow avoids fragile `str_replace` operations and provides a clean revie
 
 ---
 
-*Last Updated: 2026-03-11*
+*Last Updated: 2026-03-13*
