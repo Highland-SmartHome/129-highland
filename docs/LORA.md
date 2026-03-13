@@ -1,4 +1,4 @@
-# LoRa Integration — Design & Architecture
+# LoRa Integration — Design &amp; Architecture
 
 ## Overview
 
@@ -37,7 +37,7 @@ LoRa Node → Gateway radio → SIoT broker (localhost:1883)
 
 ## Use Cases
 
-### 1. Trash & Recycling Bin Monitoring
+### 1. Trash &amp; Recycling Bin Monitoring
 
 #### Problem Statement
 
@@ -161,98 +161,116 @@ highland/event/driveway/recycling_bin/returned
 
 ```json
 {
-  "timestamp": "2026-03-09T07:45:00Z",
+  "timestamp": "2026-03-09T14:30:00Z",
   "source": "lora_bin_monitor",
-  "bin": "trash",
-  "previous_state": "AWAY_SETTLING",
-  "new_state": "AWAY"
+  "previous_state": "AWAY",
+  "new_state": "PICKED_UP"
 }
 ```
 
-A higher-level aggregation flow handles cross-bin awareness for notifications (e.g., "both bins picked up" vs. "only trash picked up").
-
 ---
 
-### 2. Mailbox Delivery Detection
+### 2. Mailbox Monitoring
 
 #### Problem Statement
 
-Mailbox is ~275ft from the house at the end of a shared driveway with no line of sight and no ability to hear the mail truck. Three mailboxes share one post (ours and two neighbors'). Standard flip-door style, permanent installation.
+Mailbox is at the street (~275ft from house). No line of sight. Want to know:
+1. When mail has arrived (delivery confirmation)
+2. When mail has been retrieved (door activity after delivery)
 
-Goals:
-1. **"Has mail been delivered?"** — know when the carrier has made a drop without making a wasted trip
-2. **"Have I retrieved it?"** — reminder if mail is sitting uncollected into the evening
-
-A single reed switch cannot distinguish delivery from retrieval from an ad stuffer by timing or duration alone — all interactions are brief. Detection is delegated to USPS Informed Delivery, with the door sensor serving purely as an activity signal.
+USPS Informed Delivery provides morning email with scanned mail images and package tracking. Combined with a physical door sensor, this enables reliable delivery detection without needing to identify the mail carrier specifically.
 
 #### Sensor Hardware
 
-**Device:** Milesight EM300-MCS (US915)  
-**Cost:** ~$55–65 (Choovio or equivalent US distributor)  
-**Quantity:** 1  
+**Device:** Milesight EM300-MCS (Magnetic Contact Sensor)  
+**Cost:** ~$60  
+**Frequency:** US915  
 **Key specs:**
-- Magnetic reed switch on 1.5m lead cable — sensor body and radio mount separately from the switch element
+- Reed switch + external magnet
 - IP67 weatherproof enclosure
-- 4000mAh battery (5-year life) or 8000mAh option (10-year life)
-- Includes temperature and humidity sensors (incidental bonus)
-- NFC configuration via Milesight ToolBox app
-- US915 LoRaWAN, same family as EM320-TILT sensors
+- 2 × ER14505 Li-SOCl2 batteries, ≥5 year life
+- Configurable reporting interval + immediate uplink on state change
+- Operating temperature: -30°C to +70°C
 
-**Mounting approach:** Sensor body mounts on the back or side of the mailbox post — outside the metal enclosure, radio fully unobstructed. 1.5m cable runs to the door mechanism. Small magnet epoxied or taped to the inside of the mailbox door; reed switch element fixed to the door frame at the corresponding position.
+**Mounting:** Sensor body on mailbox post (sheltered side), magnet on mailbox door. Verify reliable triggering before finalizing placement.
 
-**Rationale for split mount:** Metal mailbox enclosures attenuate RF and experience extreme temperature swings. Keeping the radio and battery outside the box avoids both problems. The 1.5m cable provides ample reach from any post-mounted position.
+#### Detection Logic
 
-#### Delivery Detection — USPS Informed Delivery Integration
+**Primary signal:** USPS Informed Delivery email (morning advisory + delivery confirmation)
 
-USPS Informed Delivery sends **two emails** to the household address each mail day:
+**Flow:**
+1. Morning: USPS sends "Informed Delivery Daily Digest" email with scanned mail images
+2. Throughout day: USPS sends delivery confirmation emails as items are delivered
+3. Mailbox door sensor fires on open/close events
+4. Node-RED correlates: door event + delivery email within window = mail arrived
 
-| Email | Timing | Content |
-|-------|--------|---------|
-| Morning advisory | ~6am | Preview of mail expected that day |
-| Delivery confirmation | Shortly after physical delivery | Confirms mail has been placed in box |
-
-The delivery confirmation email is the load-bearing signal. It arrives with a lag of unknown duration after the carrier physically deposits the mail — real-world lag for this address is TBD and must be calibrated from observed data once the system is live.
-
-Node-RED polls the household email account (`highland@ferris.network`, hosted via Dynu) on a regular interval via IMAP, parses for Informed Delivery emails, and classifies them by type.
-
-#### Mailbox State Machine
+**State machine:**
 
 ```
-IDLE
-  │
-  ├─── Morning advisory email arrives ──────────────────────────────────┐
-  │                                                                     │
-  │ Door event fires                                                    │
-  ▼                                                                     ▼
-UNCLASSIFIED                                               ADVISORY_RECEIVED
-(door activity, intent unknown)                            (mail expected today)
-  │                                                                     │
-  │ Delivery confirmation email arrives                                 │ Delivery confirmation email arrives
-  │ within lag window                                                   │ (normal day)
-  ▼                                                                     │
-MAIL_WAITING ◄───────────────────────────────────────────────────────── ┘
-  │                                                                     │
-  │ Door event                                               Midnight tick — no confirmation received
-  ▼                                                                     │
-RETRIEVED → IDLE                                                        ▼
-  │                                                           DELIVERY_EXCEPTION
-  │ No door event by mail_waiting_reminder_time               (notification: low severity)
-  ▼                                                                     │
-REMINDER → "Don't forget the mail"                                      │ Confirmation eventually arrives
-  (stays MAIL_WAITING)                                                  │ (next day, 36hrs later, etc.)
-                                                                        ▼
-                                                                   MAIL_WAITING
-                                                                        │
-                                                                        │ Door event
-                                                                        ▼
-                                                                   RETRIEVED → IDLE
+IDLE ─────────────────────────────────────────────────────┐
+  │                                                        │
+  │ Morning advisory email received                        │
+  ▼                                                        │
+ADVISORY_RECEIVED                                          │
+  │                                                        │
+  │ Delivery confirmation email received                   │
+  ▼                                                        │
+MAIL_WAITING                                               │
+  │                                                        │
+  │ Door activity (mail retrieved)                         │
+  ▼                                                        │
+RETRIEVED ──────────────────────────────────────────────► IDLE
 ```
 
-**Key design points:**
+**Edge cases:**
+- Door activity before delivery email = neighbor checking their box, ad stuffers, etc. → log but don't transition state
+- Delivery email with no prior door activity = mail delivered, waiting for retrieval
+- Multiple deliveries in one day = each confirmation email is a separate "delivery" event; state stays `MAIL_WAITING` until retrieved
 
-- `ADVISORY_RECEIVED` and `UNCLASSIFIED` are both real persisted states. The advisory sets a flag that mail is expected; door activity records a timestamp. Either can arrive first, in any order.
-- The delivery confirmation email is the load-bearing signal. When it arrives, it resolves the current state to `MAIL_WAITING` regardless of what preceded it — `ADVISORY_RECEIVED`, `UNCLASSIFIED`, or `IDLE`.
-- **Lag window** (`delivery_email_lag_window_minutes`): if a door event occurred within this window before the confirmation email arrived, it's treated as the delivery event itself. If the most recent door event is older than the window, it's ignored — the delivery was made without a prior observed door event.
+#### Email Correlation Window
+
+USPS delivery confirmation emails arrive *after* the carrier has physically delivered — sometimes minutes, sometimes an hour or more. The correlation window accounts for this lag.
+
+**Approach:**
+- When door activity is detected and state is `IDLE` or `ADVISORY_RECEIVED`, start a correlation timer
+- If delivery confirmation email arrives within the window, transition to `MAIL_WAITING`
+- If no email arrives within the window, treat as "unclassified door activity" (neighbor, ad stuffer, etc.)
+
+**Window tuning:** Initial value ~30 minutes. Adjust based on observed lag for this specific route/carrier.
+
+#### Example Timeline
+
+```
+06:03 AM — Informed Delivery morning email arrives (IDLE → ADVISORY_RECEIVED)
+02:20 PM — Mailbox door opens/closes (door event logged, state unchanged)
+02:21 PM — USPS delivery confirmation email arrives
+           → Correlates with 02:20 door event
+           → State: ADVISORY_RECEIVED → MAIL_WAITING
+           → Notification: "Mail has arrived"
+05:45 PM — Mailbox door opens/closes (state is MAIL_WAITING)
+           → State: MAIL_WAITING → RETRIEVED → IDLE
+           → No notification (retrieval is implicit success)
+```
+
+#### The 36-Hour Delivery Gap
+
+The following scenario was flagged during design review as a potential edge case worth documenting. It is not expected to occur frequently, but the state machine handles it correctly.
+
+**Scenario:**
+- Day 1, 06:03 AM — Advisory email arrives (IDLE → ADVISORY_RECEIVED)
+- Day 1, all day — No delivery (carrier skip, weather hold, operational delay)
+- Day 1, midnight — State is still `ADVISORY_RECEIVED`
+  - The advisory was received, but no delivery confirmation came
+  - This is a *delivery exception* — mail was expected but did not arrive
+- Day 2, 02:20 PM — Door opens/closes (carrier finally delivers)
+- Day 2, 02:21 PM — Delivery confirmation email arrives (for Day 1's advisory)
+  - State: `ADVISORY_RECEIVED` → `MAIL_WAITING`
+  - This works correctly: the state machine was waiting for confirmation, and it got one
+
+**Key points:**
+- The advisory email transitions the state machine from `IDLE` to `ADVISORY_RECEIVED`, which means "expecting delivery"
+- The state machine does not auto-reset at midnight — it waits for either (a) a delivery confirmation, or (b) a new day's advisory to override
+- If mail arrives the *next day* after the advisory, the confirmation email still correlates correctly because the state machine is still in `ADVISORY_RECEIVED`
 - **Midnight rollover** triggers the `DELIVERY_EXCEPTION` check: if `ADVISORY_RECEIVED` is still the current state at midnight, no confirmation came that calendar day. Exception declared, low-severity notification sent.
 - `DELIVERY_EXCEPTION` is not terminal. If a delayed confirmation arrives (weather hold, next-day delivery, operational delay), it resolves normally to `MAIL_WAITING`. The next midnight tick only fires an exception if state is still `ADVISORY_RECEIVED`, not if it's already `DELIVERY_EXCEPTION`.
 - The morning advisory is explicitly **not** load-bearing for delivery detection. On days USPS sends no advisory but delivers anyway, `DELIVERY_EXCEPTION` simply never gets set — the confirmation email transitions directly from `IDLE` or `UNCLASSIFIED` to `MAIL_WAITING`.
@@ -270,7 +288,7 @@ This is a schedex node in the Scheduler flow fixed at 00:00. It is **distinct** 
 
 *Note: EVENT_ARCHITECTURE.md should be updated to add `midnight` to the defined task events when this flow is implemented.*
 
-#### Failure Modes & Contingencies
+#### Failure Modes &amp; Contingencies
 
 | Scenario | System Behavior |
 |----------|----------------|
@@ -382,7 +400,7 @@ highland/event/mailbox/delivery_exception     # advisory received, no confirmati
 **Infrastructure**
 - [ ] SIoT topic structure — confirm `ProjectID/DeviceName` format during gateway setup and align with device naming conventions
 
-**Trash & Recycling**
+**Trash &amp; Recycling**
 - [ ] RSSI calibration procedure — document actual threshold values once sensors are deployed
 - [ ] Optimal RSSI smoothing window (N readings) — tune during initial deployment
 - [ ] Morning reminder time threshold ("bins not out by X:00am on trash day")
@@ -409,4 +427,4 @@ highland/event/mailbox/delivery_exception     # advisory received, no confirmati
 
 ---
 
-*Last Updated: 2026-03-11 — Updated MQTT broker reference to hub.local*
+*Last Updated: 2026-03-10 — Corrected Scheduler Integration section: `digest_daily` is not a separate topic; `midnight` is the single calendar-day-boundary event and the Daily Digest subscribes to it alongside the mailbox flow.*
