@@ -1411,8 +1411,7 @@ All command payloads carry minimal envelope:
 Topics not yet designed. Will be added as each domain is designed.
 
 | Domain | Notes |
-|--------|
--------|
+|--------|-------|
 | **Presence / Occupancy** | FP300 sensors; `highland/state/{area}/occupancy` likely pattern |
 | **Video Pipeline** | Kill switch, detection events, triage results |
 | **HA Assist / Voice** | Marvin persona events; may not need bus presence |
