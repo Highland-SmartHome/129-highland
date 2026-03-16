@@ -241,13 +241,15 @@ mqtt:
   user: svc_zigbee2mqtt
   password: "YOUR_SVC_ZIGBEE2MQTT_PASSWORD"
 serial:
-  port: /dev/serial/by-id/usb-ITead_Sonoff_Zigbee_3.0_USB_Dongle_Plus_xxx-if00-port0
+  port: /dev/ttyUSB0  # Container-side path — Docker maps the host's by-id path to this
 frontend:
   port: 8080
 advanced:
   network_key: GENERATE_NEW_KEY
   log_level: info
 ```
+
+> **Serial port note:** Z2M uses the **container-side** device path (`/dev/ttyUSB0`), not the host's by-id path. Docker resolves the stable by-id symlink on the host and exposes the physical device inside the container at `/dev/ttyUSB0`. The stability guarantee comes from the host-side mapping in `docker-compose.yml` — no remapping risk.
 
 **Generate network key:**
 
