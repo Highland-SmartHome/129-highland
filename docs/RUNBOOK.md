@@ -912,6 +912,8 @@ Create these flows in Node-RED to establish baseline functionality:
 5. Create simple test flow in Node-RED
 6. Verify end-to-end control
 
+> **Aqara FP300 note:** The FP300 ships with Thread firmware, not Zigbee. Before it can pair with Z2M it must be converted via the Aqara Home mobile app: add the device to the app, go to device settings, and flash the Zigbee firmware. Only after this step will it be discoverable by Z2M. This is a one-time operation per device.
+
 ---
 
 ## Verification Checklist
@@ -947,7 +949,7 @@ Create these flows in Node-RED to establish baseline functionality:
 ### First Automation
 
 | Check | Status |
-|-------|--------|  
+|-------|--------|
 | Test device paired to new Z2M | ☐ |
 | Device visible in HA | ☐ |
 | Node-RED can control device via MQTT | ☐ |
