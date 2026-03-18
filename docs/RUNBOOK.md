@@ -558,7 +558,7 @@ services:
       - /opt/highland/postgres/data:/var/lib/postgresql/data
     environment:
       - POSTGRES_USER=highland
-      - POSTGRES_PASSWORD=YOUR_POSTGRES_PASSWORD
+      - 'POSTGRES_PASSWORD=YOUR_POSTGRES_PASSWORD'
       - POSTGRES_DB=homeassistant
       - TZ=America/New_York
 
@@ -590,6 +590,8 @@ services:
   #     - TZ=America/New_York
   #     - PASSWORD=your-code-server-password
 ```
+
+> **Password quoting in docker-compose:** If your Postgres password contains special characters (e.g. `!`, `#`, `:`), wrap the entire environment entry in single quotes as shown above for `POSTGRES_PASSWORD`. Single quotes in YAML mean completely literal — no escape processing. Avoid single quotes within the password itself; if your password contains one, use double quotes instead.
 
 ### 3.6 Launch Node-RED
 
@@ -948,4 +950,4 @@ Create these flows in Node-RED to establish baseline functionality:
 
 ---
 
-*Last Updated: 2026-03-16*
+*Last Updated: 2026-03-18*
