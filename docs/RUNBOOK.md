@@ -418,7 +418,7 @@ If not using DHCP reservation, set static IP:
 1. Settings → Devices & Services → Add Integration
 2. Search for "MQTT"
 3. Configure:
-   - Broker: `hub.local` (or IP address)
+   - Broker: hub IP address (not `hub.local` — see HAOS IPv6 note in section 3.14)
    - Port: `1883`
    - Username: `svc_homeassistant`
    - Password: (your svc_homeassistant MQTT password)
@@ -733,11 +733,11 @@ Now that Postgres is running, point HA's recorder at it. This must be done **bef
 
 ```yaml
 recorder:
-  db_url: postgresql://highland:YOUR_POSTGRES_PASSWORD@workflow.local/homeassistant
+  db_url: postgresql://highland:YOUR_POSTGRES_PASSWORD@workflow.local/homeassistant?host=WORKFLOW_IP_ADDRESS
   purge_keep_days: 30
 ```
 
-> **Note:** `purge_keep_days` sets how long HA keeps state history. 30 days is a reasonable baseline — adjust to taste. The video pipeline will write its own events to the same Postgres instance under a separate schema, so this only controls HA's recorder retention.
+> **HAOS and .local hostnames:** HAOS sometimes resolves `.local` hostnames to IPv6 link-local addresses (`fe80::...`), which psycopg2 and other service clients can't use, resulting in `Invalid argument` or `Name has no usable address` errors. The workaround is to use the IPv4 address directly, either as the host in the URL or via the `?host=` parameter as shown above. This applies to any service HAOS connects to by hostname — MQTT broker, database, etc. A proper fix requires either router-level DNS with IPv4 A records, or a local DNS resolver (Pi-hole, AdGuard Home, nginx) that serves authoritative IPv4 responses for local hostnames.
 
 Restart Home Assistant after saving:
 - Settings → System → Restart
@@ -947,7 +947,7 @@ Create these flows in Node-RED to establish baseline functionality:
 ### First Automation
 
 | Check | Status |
-|-------|--------|
+|-------|--------|  
 | Test device paired to new Z2M | ☐ |
 | Device visible in HA | ☐ |
 | Node-RED can control device via MQTT | ☐ |
