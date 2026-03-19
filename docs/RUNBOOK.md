@@ -53,6 +53,7 @@ Generate/document these before starting:
 | MQTT `svc_scripts` password | Backup/watchdog scripts → broker auth | secrets.json |
 | PostgreSQL `highland` password | HA Recorder + video pipeline → Postgres | secrets.json |
 | HA long-lived access token | Node-RED → HA integration | Node-RED credentials |
+| Node-RED credential secret | Encrypts Node-RED credentials file | docker-compose.yml env var |
 | Healthchecks.io ping URLs | External monitoring | secrets.json |
 | SMTP credentials | Daily digest email | secrets.json |
 | Google Calendar API key | Daily digest | secrets.json |
@@ -430,12 +431,14 @@ If not using DHCP reservation, set static IP:
 2. Search for "Z-Wave"
 3. Select "Z-Wave JS"
 4. Choose "Use Z-Wave JS Supervisor add-on" → **No**
-5. Enter WebSocket URL: `ws://hub.local:3000` (or let DNS Discovery auto-populate)
+5. Enter WebSocket URL: `ws://hub.local:3000`
 6. Submit
 
 ### 2.7 Zigbee2MQTT Integration
 
-With `homeassistant: true` in Z2M's configuration and the MQTT integration connected, Z2M device discovery is automatic — no additional steps required. Devices should already be visible under Settings → Devices & Services → MQTT.
+Option A: Use MQTT discovery (automatic if Z2M has `homeassistant: true`)
+
+Option B: Add MQTT integration and devices appear automatically
 
 ### 2.8 Sidebar Panels
 
@@ -577,6 +580,7 @@ services:
       - "hub.local:HUB_IP_ADDRESS"      # Add other .local hosts Node-RED needs to reach
     environment:
       - TZ=America/New_York
+      - NODE_RED_CREDENTIAL_SECRET=your-generated-secret-here
     # user: "1000:1000"  # Match host user if needed
 
   # Optional: code-server for VS Code in browser
@@ -625,18 +629,45 @@ Install via Node-RED UI (Menu → Manage Palette → Install):
 Edit `/opt/highland/nodered/data/settings.js`:
 
 ```javascript
-// Find contextStorage section and update:
+// Find and update credentialSecret — read from env var, never hardcode:
+credentialSecret: process.env.NODE_RED_CREDENTIAL_SECRET,
+
+// Find contextStorage section and update to dual store:
 contextStorage: {
     default: {
         module: "localfilesystem"
+    },
+    initializers: {
+        module: "memory"
     }
 },
 ```
 
-Restart Node-RED after changes:
+**Generate the credential secret and add to docker-compose.yml:**
+
 ```bash
-docker compose restart nodered
+# Generate a strong secret
+openssl rand -hex 32
 ```
+
+Add the output to the `nodered` service environment in `/opt/highland/docker-compose.yml`:
+
+```yaml
+environment:
+  - TZ=America/New_York
+  - NODE_RED_CREDENTIAL_SECRET=your-generated-secret-here
+```
+
+Store the secret somewhere safe — if lost, the credentials file is unrecoverable and all Node-RED credentials must be re-entered.
+
+Apply changes with `--force-recreate` — a plain restart is not sufficient for environment variable changes:
+
+```bash
+cd /opt/highland
+docker compose up -d --force-recreate nodered
+```
+
+> **Docker environment variable gotcha:** `docker compose restart` does NOT pick up environment variable changes in docker-compose.yml. Always use `docker compose up -d --force-recreate {service}` when adding or changing environment variables.
 
 ### 3.9 Home Assistant Configuration Node
 
@@ -842,6 +873,33 @@ echo "15 3 * * * root /usr/local/bin/highland-backup.sh" | sudo tee /etc/cron.d/
 
 **Workflow Host:** Backup handled by Backup Utility Flow (see NODERED_PATTERNS.md).
 
+### Communication Hub Health Script
+
+**Create `/etc/highland/secrets` on Hub:**
+```bash
+sudo mkdir -p /etc/highland
+sudo tee /etc/highland/secrets > /dev/null << 'EOF'
+HEALTHCHECKS_HUB_URL=https://hc-ping.com/YOUR-UUID-HERE
+EOF
+sudo chmod 600 /etc/highland/secrets
+```
+
+**Create `/usr/local/bin/highland-hub-health.sh`:**
+```bash
+#!/bin/bash
+# Highland Communication Hub — Healthchecks.io self-report
+
+source /etc/highland/secrets
+curl -fsS -m 10 --retry 3 "$HEALTHCHECKS_HUB_URL" > /dev/null 2>&1
+```
+
+```bash
+sudo chmod +x /usr/local/bin/highland-hub-health.sh
+echo "* * * * * root /usr/local/bin/highland-hub-health.sh" | sudo tee /etc/cron.d/highland-hub-health
+```
+
+Create `Communication Hub` check in Healthchecks.io: 1 minute period, 3 minute grace.
+
 ### Watchdog Script
 
 > **Note:** The original watchdog design below — subscribing to Node-RED's MQTT heartbeat and pinging Healthchecks.io on receipt — has been superseded. Node-RED now pings Healthchecks.io directly via HTTP from the Health Monitor flow, which correctly separates Node-RED liveness from MQTT liveness. If MQTT goes down but Node-RED is up, the original design would have falsely reported Node-RED as unhealthy.
@@ -875,11 +933,19 @@ fi
 
 ### Healthchecks.io Setup
 
-1. Create account at healthchecks.io
-2. Create initial check:
-   - `highland-node-red` (1 min period, 2.5 min grace)
-3. Copy ping URL to `secrets.json` under `healthchecks_io.node_red`
-4. Additional checks (`highland-mqtt`, `highland-z2m`, `highland-zwave`, `highland-ha`) will be added as each Health Monitor service check is implemented
+Create checks for each service. All checks: 1 minute period, 3 minute grace.
+
+**Self-report checks (service pings directly):**
+- `Node-RED` — pinged by Node-RED Health Monitor flow
+- `Home Assistant` — pinged by native HA automation via rest_command
+- `Communication Hub` — pinged by hub cron script
+
+**Edge checks (Node-RED pings on behalf of connection):**
+- `Node-RED / Home Assistant Edge` — Node-RED HTTP check to HA API
+
+Additional edge checks (MQTT, Z2M, Z-Wave JS) added as each service check is implemented.
+
+Store all ping URLs in `secrets.json` under `healthchecks_io`.
 
 ### Log Rotation
 
@@ -900,9 +966,10 @@ fi
 
 Create these flows in Node-RED to establish baseline functionality:
 
-1. **Config Loader** — Load config files on startup ✅
-2. **Health Monitor** — Ping Healthchecks.io, monitor services
-3. **Logging Utility** — Subscribe to `highland/event/log`, write to JSONL
+1. **Utility: Initializers** — Populate initializers context store on startup ✅
+2. **Utility: Config Loader** — Load config files on startup ✅
+3. **Utility: Health Checks** — Node-RED and HA health checks ✅
+4. **Utility: Logging** — Subscribe to `highland/event/log`, write to JSONL ✅
 
 ### First Device Migration Test
 
@@ -942,6 +1009,7 @@ Create these flows in Node-RED to establish baseline functionality:
 |-------|--------|
 | Hub backup script installed | ☐ |
 | Hub backup cron configured | ☐ |
+| Hub health script installed | ☐ |
 | Healthchecks.io checks configured | ☐ |
 | Node-RED Health Monitor pinging Healthchecks.io | ☐ |
 | Log rotation configured | ☐ |
@@ -957,4 +1025,4 @@ Create these flows in Node-RED to establish baseline functionality:
 
 ---
 
-*Last Updated: 2026-03-18*
+*Last Updated: 2026-03-19*
