@@ -379,6 +379,64 @@ Centralized knowledge about devices — protocol, topic structure, capabilities,
 └── README.md                   ← git: yes
 ```
 
+### Example: notifications.json
+
+```json
+{
+  "people": {
+    "joseph": {
+      "admin": true,
+      "channels": {
+        "ha_companion": "notify.mobile_app_joseph_phone"
+      }
+    },
+    "spouse": {
+      "admin": false,
+      "channels": {
+        "ha_companion": "notify.mobile_app_spouse_phone"
+      }
+    }
+  },
+  "daily_digest": {
+    "recipients": ["joseph@example.com"],
+    "enabled": true
+  },
+  "defaults": {
+    "admin_only": ["joseph"],
+    "all": ["joseph", "spouse"]
+  }
+}
+```
+
+**Person-centric model:** Each person has an `admin` flag and a `channels` map of channel name → delivery address. When a new notification channel is added (e.g. Pushover, Telegram), add an entry under each person's `channels` object.
+
+**`admin` flag** — Determines whether a person receives administrative notifications (system health, infrastructure alerts).
+
+**`defaults`** — Named recipient lists for convenience. Callers copy these values into the payload `recipients` field explicitly — there is no implicit defaulting.
+
+### Example: thresholds.json
+
+```json
+{
+  "battery": {
+    "warning": 35,
+    "critical": 15
+  },
+  "health": {
+    "disk_warning": 70,
+    "disk_critical": 90,
+    "cpu_warning": 80,
+    "cpu_critical": 95,
+    "memory_warning": 80,
+    "memory_critical": 95,
+    "devices_offline_critical_percent": 20
+  },
+  "ack": {
+    "default_timeout_seconds": 30
+  }
+}
+```
+
 ### Config Loader (`Utility: Config Loader`)
 
 Loads all config files into `global.config` at startup and on reload commands (`highland/command/config/reload`).
@@ -403,12 +461,15 @@ highland/event/notify
 {
   "timestamp": "2025-02-24T14:30:00Z",
   "source": "security",
+  "channels": ["ha_companion"],
+  "recipients": ["joseph", "spouse"],
   "severity": "high",
   "title": "Lock Failed to Engage",
   "message": "Front Door Lock did not respond within 30 seconds",
-  "recipients": ["mobile_joseph", "mobile_spouse"],
   "dnd_override": true,
-  "media": { "image": "http://camera.local/snapshot.jpg" },
+  "media": {
+    "image": "http://camera.local/snapshot.jpg"
+  },
   "actionable": true,
   "actions": [
     { "id": "retry", "label": "Retry Lock" },
@@ -424,37 +485,56 @@ highland/event/notify
 
 | Severity | DND Override | Use Case |
 |----------|--------------|----------|
-| `low` | No | Informational; can wait |
-| `medium` | No | Worth knowing soon, not urgent |
-| `high` | Yes | Needs attention now |
-| `critical` | Yes | Emergency |
+| `low` | No | Informational; can wait (fog advisory, routine status) |
+| `medium` | No | Worth knowing soon, but not urgent |
+| `high` | Yes | Needs attention now (lock failure, unexpected motion) |
+| `critical` | Yes | Emergency (fire, flood, intrusion) |
 
-### Delivery Channels
+### Fields
 
-**Primary: HA Companion App (Android)**
-- Rich notifications — images, actionable, persistent, DND channels
-- HA-dependent — unavailable when `connections.home_assistant` is `'down'`
+| Field | Required | Description |
+|-------|----------|--------------|
+| `channels` | **Yes** | Which delivery channels to use: `["ha_companion"]`, `["ha_companion", "pushover"]`, etc. Explicit — no defaulting |
+| `recipients` | **Yes** | Named people from `notifications.json`: `["joseph"]`, `["joseph", "spouse"]`. Use `defaults.admin_only` or `defaults.all` values explicitly — no implicit defaulting |
+| `severity` | Yes | `low`, `medium`, `high`, `critical` |
+| `title` | Yes | Short summary |
+| `message` | Yes | Full detail |
+| `dnd_override` | No | Derived from severity if not specified |
+| `media` | No | Image and/or video URLs |
+| `actionable` | No | Can recipient respond?; default = false |
+| `actions` | No | Available response actions |
+| `sticky` | No | Notification persists until dismissed; default = false |
+| `group` | No | Group related notifications together |
+| `correlation_id` | No | For linking response back to originating event; also used as notification tag |
 
-**Secondary: Pushover**
-- Node-RED calls directly via HTTP — no HA dependency
-- Used only when HA is unavailable AND severity is `high` or `critical`
+### Channel Selection Philosophy
 
-**Routing logic:**
-```javascript
-const haAvailable = global.get('connections.home_assistant') !== 'down';
+**Both `channels` and `recipients` are required** — every notification represents a deliberate design-time decision about who receives it and how. No implicit defaulting avoids the trap of sending all notifications to everyone.
 
-if (haAvailable) {
-    // route to HA Companion
-} else if (['high', 'critical'].includes(msg.payload.severity)) {
-    // route to Pushover
-} else {
-    // drop low/medium — stale by the time HA recovers
-}
-```
+**Multi-channel is intent, not failover.** Specifying `["ha_companion", "pushover"]` means deliver via both regardless of availability. Specifying `["ha_companion"]` means deliver via HA Companion only — the Connection Gate handles availability for that specific channel path.
 
-**No dual delivery** — explicit failover only.
+**Graceful degradation within a channel.** The MQTT payload is designed for maximum richness. Each channel adapter extracts what it supports and silently ignores the rest. No payload changes needed when new channels are added.
 
-### Android Notification Channels
+**Missing channel address → log WARN, skip, continue.** If a recipient has no address for a specified channel, log a warning and continue delivering to other recipients/channels. Deliver as much as possible.
+
+### Mobile Implementation: HA Companion App (Android)
+
+Initial implementation uses Home Assistant Companion App. Future channels added as needed.
+
+#### Device Targeting
+
+Recipients are named people from `notifications.json`. The Notification Utility looks up each person's `channels.ha_companion` address:
+
+| Person | `channels.ha_companion` |
+|--------|------------------------|
+| `joseph` | `notify.mobile_app_joseph_phone` |
+| `spouse` | `notify.mobile_app_spouse_phone` |
+
+**Use case:** Administrative notifications (system health, backups) specify `recipients: ["joseph"]`. Security alerts specify `recipients: ["joseph", "spouse"]`.
+
+#### Android Notification Channels
+
+Pre-configure channels in HA Companion App for user control over sound/vibration/DND:
 
 | Channel ID | Purpose | DND Override |
 |------------|---------|--------------|
@@ -463,13 +543,59 @@ if (haAvailable) {
 | `highland_high` | Urgent alerts | Yes |
 | `highland_critical` | Emergency | Yes |
 
+#### Severity → HA Companion Mapping
+
+| Our Severity | HA Priority | Channel | Persistent |
+|--------------|-------------|---------|------------|
+| `low` | `low` | `highland_low` | No |
+| `medium` | `default` | `highland_default` | No |
+| `high` | `high` | `highland_high` | No (unless `sticky: true`) |
+| `critical` | `high` | `highland_critical` | Yes |
+
+#### HA Companion Service Call
+
+Our payload translated to HA service call:
+
+```yaml
+service: notify.mobile_app_joseph_phone
+data:
+  title: "Lock Failed to Engage"
+  message: "Front Door Lock did not respond within 30 seconds"
+  data:
+    channel: "highland_high"
+    importance: "high"
+    persistent: true
+    image: "http://camera.local/snapshot.jpg"
+    tag: "lockdown_20250224_2200"
+    group: "security_alerts"
+    actions:
+      - action: "RETRY_lockdown_20250224_2200"
+        title: "Retry Lock"
+      - action: "DISMISS_lockdown_20250224_2200"
+        title: "Dismiss"
+```
+
+#### Clearing Notifications
+
+To programmatically dismiss a notification:
+
+```yaml
+service: notify.mobile_app_joseph_phone
+data:
+  message: "clear_notification"
+  data:
+    tag: "lockdown_20250224_2200"
+```
+
+**Use case:** Battery critical notification auto-clears when battery recovers.
+
 ### Action Responses
 
-When user taps a notification action, HA fires `mobile_app_notification_action`. Notification Utility normalizes and publishes to `highland/event/notify/action_response`.
+When user taps a notification action, HA fires `mobile_app_notification_action`. The Notification Utility normalizes and publishes to `highland/event/notify/action_response`. Action responses are a channel-specific feature (HA Companion only at present) — full design deferred until actionable notifications are implemented.
 
 ### Future Channels (Deferred)
 
-Telegram is a strong candidate — rich features, HA-independent, two-way interaction. Deferred pending evaluation of DND override limitations and webhook complexity.
+Telegram is a strong candidate — rich features, HA-independent, two-way interaction. Each new channel adds an entry to each person's `channels` object in `notifications.json` and a new delivery group in the Notification Utility flow. The MQTT payload schema does not change.
 
 ---
 
@@ -678,16 +804,18 @@ All checks: 1 minute period, 3 minute grace period.
 
 - [x] ~~Pub/sub subflow implementation details~~ → **Flow Registration pattern**
 - [x] ~~Logging persistence destination~~ → **JSONL files, daily rotation**
-- [x] ~~Mobile notification channel selection~~ → **HA Companion primary; Pushover secondary for high/critical when HA unavailable; no dual delivery**
+- [x] ~~Mobile notification channel selection~~ → **HA Companion primary; explicit multi-channel via `channels` field; no implicit failover**
 - [x] ~~Should ERROR-level logs also auto-notify?~~ → **CRITICAL only**
 - [x] ~~Device Registry storage~~ → **External JSON, global.config.deviceRegistry**
 - [x] ~~ACK pattern design~~ → **Centralized ACK Tracker**
 - [x] ~~Health monitoring approach~~ → **Each service self-reports + Node-RED edge checks + HA edge checks + Healthchecks.io**
 - [x] ~~Startup sequencing / race conditions~~ → **Initializer Latch subflow**
 - [x] ~~HA connection state detection~~ → **`status` node pattern; `connections.home_assistant` and `connections.mqtt` global flags; startup settling window; `Utility: Connections` flow**
-- [x] ~~Notification routing when HA is down~~ → **`connections.home_assistant` flag drives failover; high/critical → Pushover; low/medium → drop**
+- [x] ~~Notification routing when HA is down~~ → **No implicit failover; sender specifies channels explicitly; Connection Gate handles per-channel availability**
 - [x] ~~Connection-aware message routing~~ → **`Connection Gate` subflow; OUTPUT_1 = connected, OUTPUT_2 = unrecovered; RETENTION_MS drives hold-and-retry behavior**
-- [ ] **Utility: Notifications** — build out flow with HA Companion primary + Pushover secondary via Connection Gate
+- [x] ~~Notification recipient/channel model~~ → **Person-centric config; `channels` and `recipients` both required; graceful degradation per channel adapter; missing address → WARN log**
+- [ ] **Utility: Notifications** — build out flow with HA Companion delivery, Connection Gate, person lookup
+- [ ] **Action responses** — design deferred until actionable notifications are implemented
 - [ ] **Utility: Scheduler** — period transitions and task events
 
 ---
