@@ -418,7 +418,7 @@ Publish to `highland/command/notify/clear`:
 }
 ```
 
-`correlation_id` must match the value set on delivery. `tag` is not the same field.
+`correlation_id` must match the value set on delivery. `tag` is not the same field — always use `correlation_id` for notifications that need to be clearable.
 
 ---
 
@@ -687,7 +687,8 @@ Centralized ACK tracking for flows that need confirmation of actions.
 - [x] ~~Connection-aware message routing~~ → **Connection Gate subflow**
 - [x] ~~Notification recipient/channel model~~ → **Person-centric config; `channels` and `recipients` required; graceful degradation**
 - [x] ~~Utility: Notifications~~ → **Built and tested; HA Companion delivery, Connection Gate, person lookup, clear path**
-- [ ] **Action responses** — deferred until actionable notifications are implemented
+- [ ] **Fan-out routing pattern** — scalable approach for routing to N channel delivery groups without growing switch node outputs or multi-output function nodes; `link call` with dynamic `msg.target` is a candidate but requires all paths to return to caller; more elegant solution TBD
+- [ ] **Action responses** — design deferred until actionable notifications are implemented
 - [ ] **Utility: Scheduler** — period transitions and task events
 
 ---
