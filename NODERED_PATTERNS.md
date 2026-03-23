@@ -337,8 +337,25 @@ Log messages are set on `msg.log_level`, `msg.log_message`, and `msg.log_context
       }
     }
   },
+  "areas": {
+    "living_room": {
+      "channels": {
+        "tv": {
+          "media_player": "media_player.living_room_tv",
+          "sources": [
+            { "name": "FIOS TV", "type": "android_tv" },
+            { "name": "Xbox", "type": "webos" },
+            { "name": "Playstation", "type": "webos" }
+          ],
+          "endpoints": {
+            "android_tv": "notify.living_room_stb",
+            "webos": "notify.living_room_lg_tv"
+          }
+        }
+      }
+    }
+  },
   "daily_digest": {
-    "recipients": ["joseph@example.com"],
     "enabled": true
   },
   "defaults": {
@@ -348,9 +365,20 @@ Log messages are set on `msg.log_level`, `msg.log_message`, and `msg.log_context
 }
 ```
 
-**Person-centric model:** Each person has an `admin` flag and a `channels` map. Adding a new channel means adding an entry to each person's `channels` object.
+**Target addressing:** Notifications use a `targets` array of namespaced strings (`namespace.key.channel`). The `*` wildcard expands all keys in a namespace section.
 
-**`defaults`** — Named recipient lists. Callers copy these values into the payload `recipients` field explicitly — no implicit defaulting.
+| Example target | Resolves to |
+|----------------|-------------|
+| `people.joseph.ha_companion` | Joseph's phone via HA Companion |
+| `people.*.ha_companion` | All people's HA Companion |
+| `areas.living_room.tv` | Living room TV |
+| `areas.*.tv` | All area TVs |
+
+**`people`** — Each person has an `admin` flag and a `channels` map of channel name → HA notify service address. `admin` determines whether a person receives administrative notifications (system health, infrastructure alerts).
+
+**`areas`** — Each area has a `channels` map. The `tv` channel includes a `media_player` entity for HA state lookup, a `sources` array mapping input names to delivery types, and an `endpoints` map of type → HA notify service. Unknown sources (not in `sources` array) log WARN and drop — adding a new input device to a TV is a two-step process: physical setup + config update.
+
+**`defaults`** — Named target lists for convenience. Callers expand these into `targets` entries explicitly — no implicit defaulting.
 
 ### Config Loader
 
@@ -370,8 +398,7 @@ Notifications answer: *"How urgently does a human need to know about this?"*
 {
   "timestamp": "2025-02-24T14:30:00Z",
   "source": "security",
-  "channels": ["ha_companion"],
-  "recipients": ["joseph", "spouse"],
+  "targets": ["people.joseph.ha_companion", "people.spouse.ha_companion"],
   "severity": "high",
   "title": "Lock Failed to Engage",
   "message": "Front Door Lock did not respond within 30 seconds",
@@ -385,19 +412,21 @@ Notifications answer: *"How urgently does a human need to know about this?"*
 
 | Field | Notes |
 |-------|-------|
-| `channels` | Non-empty array. No defaulting. |
-| `recipients` | Non-empty array of person names. No defaulting. |
+| `targets` | Non-empty array of `namespace.key.channel` strings. `*` wildcard supported. |
 | `severity` | `low`, `medium`, `high`, `critical` |
 | `title` | Short summary |
 | `message` | Full detail |
 
-### Channel Selection Philosophy
+### Target Selection Philosophy
 
-**Both `channels` and `recipients` are required** — every notification represents a deliberate design-time decision about who receives it and how.
+**`targets` is required** — every notification represents a deliberate design-time decision about who receives it and how. No implicit defaulting.
 
-**Multi-channel is intent, not failover.** `["ha_companion", "pushover"]` means deliver via both. `["ha_companion"]` means HA only — the Connection Gate handles availability.
+**Cross-namespace targeting is natural.** A single notification can reach both people and areas:
+```json
+"targets": ["people.joseph.ha_companion", "people.spouse.ha_companion", "areas.*.tv"]
+```
 
-**Resiliency is the caller's responsibility.** If a notification requires guaranteed delivery, the caller specifies multiple channels. The Notification Utility delivers what it can via the channels specified — it does not retry or compensate for a channel being unavailable. A caller that needs resilience against HA being down should include a secondary channel; a caller that specifies only `ha_companion` has made a conscious decision that delivery is best-effort.
+**Resiliency is the caller's responsibility.** If guaranteed delivery is needed, include multiple channels in `targets`. The Notification Utility delivers what it can — it does not retry or compensate for unavailability.
 
 **Graceful degradation within a channel.** Each channel adapter extracts what it supports and silently ignores the rest.
 
@@ -419,11 +448,11 @@ Publish to `highland/command/notify/clear`:
 ```json
 {
   "correlation_id": "lockdown_20250224_2200",
-  "recipients": ["joseph"]
+  "targets": ["people.joseph.ha_companion"]
 }
 ```
 
-`correlation_id` must match the original delivery. `tag` ≠ `correlation_id`.
+`correlation_id` must match the original delivery. `tag` ≠ `correlation_id`. TV channels auto-dismiss and ignore clears.
 
 ---
 
@@ -527,7 +556,7 @@ Output 1 = connected (immediately or recovered). Output 2 = unrecovered. No sile
 
 ### Purpose
 
-Centralized delivery of notifications to people via configured channels. All notification traffic enters via MQTT — no other flow calls HA notify services directly.
+Centralized delivery of notifications to people and areas via configured channels. All notification traffic enters via MQTT — no other flow calls HA notify services directly.
 
 ### Topics
 
@@ -542,6 +571,12 @@ Centralized delivery of notifications to people via configured channels. All not
 **Receive Notification** — MQTT in (`highland/event/notify`) → Initializer Latch → Validate Payload → Build Targets → `link call` (Deliver, dynamic) → Log Event link out
 
 **HA Companion Delivery** — Link In (`Home Assistant Companion`) → Connection Gate → Build Service Call → HA service call node → `link out` (return mode)
+
+**Television Routing** — Link In (`Television Routing`) → Resolve TV Endpoint → `link call` (dynamic) → `link out` (return mode) *(pending)*
+
+**Android TV Delivery** — Link In (`Android TV Delivery`) → Build Android TV Call → HA service call node → `link out` (return mode) *(pending)*
+
+**WebOS Delivery** — Link In (`WebOS Delivery`) → Build WebOS Call → HA service call node → `link out` (return mode) *(pending)*
 
 **Clear Notification** — MQTT in (`highland/command/notify/clear`) → Initializer Latch → Build Clear Call → `link call` (Deliver, dynamic) → Log Event link out
 
@@ -558,17 +593,24 @@ Centralized delivery of notifications to people via configured channels. All not
 
 ### Validate Payload
 
-Required: `channels`, `recipients`, `severity`, `title`, `message`. Both arrays must be non-empty. Invalid → WARN log, drop.
+Required: `targets`, `severity`, `title`, `message`. `targets` must be a non-empty array. Invalid → WARN log, drop.
 
 ### Build Targets (Fan Out)
 
-Iterates `channels × recipients`. Looks up `global.config.notifications.people.{person}.channels.{channel}`. For each valid combination, sends one message with `msg.payload._delivery` and `msg.target` set:
+Resolves a `targets` array of namespaced strings into individual delivery messages. Each target is `namespace.key.channel` — e.g. `people.joseph.ha_companion`, `areas.living_room.tv`, `areas.*.tv`. The `*` wildcard expands all keys in a namespace section.
+
+Resolution logic:
+1. Split target into `[namespace, key, channel]`
+2. Look up `notifications[namespace]` — WARN and skip if unknown
+3. Expand `*` to all keys in the namespace section
+4. Look up `entry.channels[channel]` for each key — WARN and skip if missing
+5. Emit one message per resolved address with `msg.payload._delivery` and `msg.target` set
 
 ```javascript
 node.send({
     payload: {
         ...msg.payload,
-        _delivery: { channel, recipient, address }
+        _delivery: { namespace, key, channel, address }
     },
     target: resolveLinkTarget(channel)
 });
@@ -580,12 +622,13 @@ node.send({
 function resolveLinkTarget(channel) {
     switch (channel) {
         case 'ha_companion': return 'Home Assistant Companion';
+        case 'tv':           return 'Television Routing';
         default: throw new Error(`Unable to resolve channel: ${channel}`);
     }
 }
 ```
 
-Adding a new channel: add a case here and a new delivery group with a matching `Link In` name. Missing recipient or address → WARN log, skip, continue.
+Adding a new channel: add a case here and a new delivery group with a matching `Link In` name.
 
 ### `link call` Node (Deliver)
 
@@ -593,7 +636,7 @@ Reads `msg.target` dynamically and routes to the matching `Link In` node name. S
 
 ### Connection Gate (HA Companion Delivery)
 
-`CONNECTION_TYPE = home_assistant`, `CONTEXT_PREFIX = ha-`, `RETENTION_MS = 0`. Output 2 unwired — if HA is down the message drops. Resiliency is the caller's responsibility via channel selection.
+`CONNECTION_TYPE = home_assistant`, `CONTEXT_PREFIX = ha-`, `RETENTION_MS = 0`. Output 2 unwired — if HA is down the message drops. Resiliency is the caller's responsibility via target selection.
 
 ### Build Service Call
 
@@ -606,13 +649,13 @@ if (_delivery.type === 'clear') {
         action: _delivery.address,
         data: { message: 'clear_notification', data: { tag: msg.payload.correlation_id } }
     };
-    msg.log_message = `Notification cleared for ${_delivery.recipient} via ${_delivery.channel}`;
+    msg.log_message = `Notification cleared for ${_delivery.key} via ${_delivery.channel}`;
     return msg;
 }
 
 // Delivery path
 msg.payload = { action: _delivery.address, data: { title, message, data } };
-msg.log_message = `Notification delivered to ${_delivery.recipient} via ${_delivery.channel}`;
+msg.log_message = `Notification delivered to ${_delivery.key} via ${_delivery.channel}`;
 return msg;
 ```
 
@@ -627,19 +670,21 @@ return msg;
 
 **`api-call-service` node:** Action field blank (reads `msg.payload.action` implicitly); Data field = JSONata `payload.data`.
 
+### Television Routing Group
+
+Receives `tv` channel deliveries and determines the actual endpoint based on HA state:
+
+1. Read `media_player` entity from `_delivery.address.media_player`
+2. If entity state is `off` or unavailable → WARN log, return (drop)
+3. Read `source` attribute from HA entity state
+4. Find matching entry in `_delivery.address.sources` — if not found → WARN log, return (drop)
+5. Look up `_delivery.address.endpoints[matchedSource.type]` → set as actual delivery address
+6. Set `msg.target` = matching delivery group name (e.g. `'Android TV Delivery'`)
+7. Fire `link call` to dispatch; return path bubbles back up through this group
+
 ### Build Clear Call
 
-Mirrors Build Targets — iterates recipients, resolves `ha_companion` address, sets `_delivery.type: 'clear'`, and sends via `link call`:
-
-```javascript
-node.send({
-    payload: {
-        _delivery: { channel: 'ha_companion', recipient, address, type: 'clear' },
-        correlation_id
-    },
-    target: 'Home Assistant Companion'
-});
-```
+Structurally identical to `Build Targets` — resolves the `targets` array using the same namespace resolver and wildcard expansion, sets `_delivery.type: 'clear'`, and dispatches via `link call`. Each delivery group decides what to do with a clear — `HA Companion Delivery` sends `clear_notification`, TV channels auto-dismiss and return immediately.
 
 `correlation_id` must match the original delivery. `tag` ≠ `correlation_id`.
 
@@ -647,7 +692,7 @@ node.send({
 ```json
 {
   "correlation_id": "lockdown_20250224_2200",
-  "recipients": ["joseph"]
+  "targets": ["people.joseph.ha_companion"]
 }
 ```
 
@@ -662,8 +707,10 @@ Same MQTT/console fallback pattern as `Utility: Connections`. `Build Service Cal
 ### Notes
 
 - `Utility: Notifications` is the only flow that calls HA notify services
-- All HA delivery and clear traffic flows through the same HA Companion group — the group is channel-specific, not operation-specific
+- All delivery and clear traffic uses the same `Build Targets` / `Build Clear Call` resolver — no channel-specific logic at the dispatcher level
+- Each delivery group decides how to handle `_delivery.type === 'clear'` — auto-dismiss channels receive and return immediately
 - Adding a new channel: add a case to `resolveLinkTarget()`, build a new delivery group with a matching `Link In` name, wire the return `link out`
+- Adding a new TV input source requires updating `notifications.json` — unknown sources log WARN and drop, acting as a natural reminder that config step two is pending
 - Action responses deferred until actionable notifications are implemented
 - Test Cases group preserved for sanity testing
 
@@ -728,22 +775,25 @@ Centralized ACK tracking for flows that need confirmation of actions.
 
 - [x] ~~Pub/sub subflow implementation details~~ → **Flow Registration pattern**
 - [x] ~~Logging persistence destination~~ → **JSONL files, daily rotation**
-- [x] ~~Mobile notification channel selection~~ → **HA Companion primary; explicit multi-channel via `channels` field; no implicit failover**
+- [x] ~~Mobile notification channel selection~~ → **HA Companion primary; explicit multi-channel via `targets` field; no implicit failover**
 - [x] ~~Should ERROR-level logs also auto-notify?~~ → **CRITICAL only**
 - [x] ~~Device Registry storage~~ → **External JSON, global.config.deviceRegistry**
 - [x] ~~ACK pattern design~~ → **Centralized ACK Tracker**
 - [x] ~~Health monitoring approach~~ → **Each service self-reports + Node-RED edge checks + HA edge checks + Healthchecks.io**
 - [x] ~~Startup sequencing / race conditions~~ → **Initializer Latch subflow at MQTT ingress**
 - [x] ~~HA connection state detection~~ → **`status` node pattern; `connections.home_assistant` and `connections.mqtt`; startup settling window**
-- [x] ~~Notification routing when HA is down~~ → **No implicit failover; sender specifies channels; resiliency is caller's responsibility**
+- [x] ~~Notification routing when HA is down~~ → **No implicit failover; caller specifies targets; resiliency is caller's responsibility**
 - [x] ~~Connection-aware message routing~~ → **Connection Gate subflow; RETENTION_MS=0 default for notifications**
-- [x] ~~Notification recipient/channel model~~ → **Person-centric config; `channels` and `recipients` required; graceful degradation**
-- [x] ~~Utility: Notifications~~ → **Built and tested; HA Companion delivery, Connection Gate, person lookup, clear path**
+- [x] ~~Notification recipient/channel model~~ → **Namespaced `targets` array; `namespace.key.channel` format; `*` wildcard; `people` and `areas` namespaces; each delivery group owns its own routing logic**
+- [x] ~~Utility: Notifications~~ → **Built and tested; HA Companion delivery, Connection Gate, namespace resolver, clear path**
 - [x] ~~Fan-out routing pattern~~ → **`link call` with dynamic `msg.target`; `resolveLinkTarget()` maps channel keys to `Link In` node names; delivery groups return via `link out` (return mode); catch node handles timeouts**
-- [ ] **Namespaced target addressing** — replace `channels` + `recipients` with `targets: ["people.joseph.ha_companion", "areas.living_room.webos_tv", "areas.*.webos_tv"]`; `Build Targets` becomes a resolver; `*` wildcard expands all keys in a namespace section; eliminates channel × recipient matrix noise; enables area-addressed delivery (e.g. LG WebOS TVs); adding a new device only requires updating `notifications.json`
+- [x] ~~Namespaced target addressing~~ → **Implemented; `Build Targets` and `Build Clear Call` both use namespace resolver with wildcard; `notifications.json` has `people` and `areas` sections**
+- [ ] **Television Routing group** — HA state lookup on `media_player` entity; resolve current source against `sources` array; dispatch to `Android TV Delivery` or `WebOS Delivery` via `link call`; unknown source → WARN log, drop; TV off → WARN log, drop
+- [ ] **Android TV Delivery group** — `nfandroidtv` service call adapter via HA; clears are no-ops (auto-dismiss)
+- [ ] **WebOS Delivery group** — WebOS notify service call adapter via HA; clears are no-ops (auto-dismiss)
 - [ ] **Action responses** — deferred until actionable notifications are implemented
 - [ ] **Utility: Scheduler** — period transitions and task events
 
 ---
 
-*Last Updated: 2026-03-20*
+*Last Updated: 2026-03-23*
