@@ -312,12 +312,16 @@ Log messages are set on `msg.log_level`, `msg.log_message`, and `msg.log_context
 ```
 /home/nodered/config/
 ├── device_registry.json        ← git: yes
-├── notifications.json          ← git: yes
-├── thresholds.json             ← git: yes
-├── healthchecks.json           ← git: yes
-├── secrets.json                ← git: NO
-└── README.md                   ← git: yes
+├── flow_registry.json          ← git: yes (area→device mappings, if persisted)
+├── location.json               ← git: yes (lat/lon, timezone, elevation)
+├── notifications.json          ← git: yes (recipient mappings, channels)
+├── thresholds.json             ← git: yes (battery, health, etc.)
+├── healthchecks.json           ← git: yes (service config)
+├── secrets.json                ← git: NO (.gitignore)
+└── README.md                   ← git: yes (documents config structure)
 ```
+
+*Note: Scheduler configuration (periods, sunrise/sunset) lives in schedex nodes within the Scheduler flow, not external config. `location.json` is the authoritative source for coordinates — schedex nodes reference it as documentation but require the values to be entered manually in the UI.*
 
 ### Example: notifications.json
 
@@ -382,7 +386,26 @@ Log messages are set on `msg.log_level`, `msg.log_message`, and `msg.log_context
 
 ### Config Loader
 
-Loads all config files into `global.config` at startup and on `highland/command/config/reload`.
+Loads all config files into `global.config` at startup and on `highland/command/config/reload`. You will need to update the `Load Config Files` function node in `Utility: Config Loader` to also read `location.json` and store it at `global.config.location`.
+
+**Config Loader namespace:**
+
+```
+global.config.deviceRegistry
+global.config.flowRegistry
+global.config.location
+global.config.notifications
+global.config.thresholds
+global.config.healthchecks
+global.config.secrets
+```
+
+**Accessing location in flows:**
+
+```javascript
+const location = global.get('config.location');
+const { latitude, longitude, timezone, elevation_ft } = location;
+```
 
 ---
 
