@@ -311,6 +311,7 @@ Log messages are set on `msg.log_level`, `msg.log_message`, and `msg.log_context
 
 ```
 /home/nodered/config/
+├── device_catalog.json         ← git: yes (model battery specs, friendly name overrides)
 ├── device_registry.json        ← git: yes
 ├── flow_registry.json          ← git: yes (area→device mappings, if persisted)
 ├── location.json               ← git: yes (lat/lon, timezone, elevation)
@@ -386,11 +387,12 @@ Log messages are set on `msg.log_level`, `msg.log_message`, and `msg.log_context
 
 ### Config Loader
 
-Loads all config files into `global.config` at startup and on `highland/command/config/reload`. You will need to update the `Load Config Files` function node in `Utility: Config Loader` to also read `location.json` and store it at `global.config.location`.
+Loads all config files into `global.config` at startup and on `highland/command/config/reload`.
 
 **Config Loader namespace:**
 
 ```
+global.config.deviceCatalog
 global.config.deviceRegistry
 global.config.flowRegistry
 global.config.location
@@ -400,11 +402,32 @@ global.config.healthchecks
 global.config.secrets
 ```
 
-**Accessing location in flows:**
+### Accessing Config in Flows
 
 ```javascript
+// Device catalog — battery specs and friendly name overrides
+const catalog = global.get('config.deviceCatalog');
+const batterySpec = catalog?.models?.['PS-S04D']?.battery;
+const override = catalog?.overrides?.['office_desk_presence'];
+
+// Device info
+const device = global.get('config.deviceRegistry.foyer_entry_door');
+const friendlyName = device.friendly_name;
+
+// Location (lat/lon for solar calculations, weather APIs, etc.)
 const location = global.get('config.location');
 const { latitude, longitude, timezone, elevation_ft } = location;
+
+// Thresholds
+const batteryWarn = global.get('config.thresholds.battery.warning');
+const batteryCrit = global.get('config.thresholds.battery.critical');
+
+// Secrets
+const apiKey = global.get('config.secrets.weather_api_key');
+const mqttUser = global.get('config.secrets.mqtt.username');
+
+// Notification recipients
+const adminRecipients = global.get('config.notifications.defaults.admin_only');
 ```
 
 ---
@@ -443,11 +466,6 @@ Notifications answer: *"How urgently does a human need to know about this?"*
 ### Target Selection Philosophy
 
 **`targets` is required** — every notification represents a deliberate design-time decision about who receives it and how. No implicit defaulting.
-
-**Cross-namespace targeting is natural.** A single notification can reach both people and areas:
-```json
-"targets": ["people.joseph.ha_companion", "people.spouse.ha_companion", "areas.*.tv"]
-```
 
 **Resiliency is the caller's responsibility.** If guaranteed delivery is needed, include multiple channels in `targets`. The Notification Utility delivers what it can — it does not retry or compensate for unavailability.
 
@@ -854,6 +872,112 @@ This is a push model, not polling. The retained state delivers once on subscript
 
 ---
 
+## Utility: Battery Monitor
+
+### Purpose
+
+Tracks battery levels across all Zigbee devices, detects state transitions, notifies appropriately, and persists state across restarts.
+
+### Topics
+
+| Topic | Retained | Purpose |
+|-------|----------|---------|
+| `highland/event/battery/low` | No | Device crossed into low state |
+| `highland/event/battery/critical` | No | Device crossed into critical state |
+| `highland/event/battery/normal` | No | Device recovered to normal |
+
+### Battery States
+
+| State | Threshold | Notification |
+|-------|-----------|-------------|
+| `normal` | > 35% | None (or silent recovery from critical) |
+| `low` | 15–35% | Once, medium priority |
+| `critical` | < 15% | Immediately high priority; repeats every 24hrs until recovered |
+
+**Silent recovery:** `low` → `normal` produces no notification. `critical` → `normal` or `critical` → `low` cancels the repeat timer and notifies recovery at low priority.
+
+**Rechargeable devices:** `rechargeable: true` in the model catalog entry. `Build Notification` branches on this flag — message says "plug in to charge" rather than "replace N× type".
+
+### Groups
+
+**Sinks** — `zigbee2mqtt/#` MQTT in → Initializer Latch → `Extract Battery` → Link Out
+
+**Battery State Pipeline** — Link In → `Evaluate State` (Output 1: state changed, Output 2: no change/drop) → `Build Event` → MQTT out (battery event) + `Build Notification` → MQTT out (notify)
+
+**Device Discovery** — `zigbee2mqtt/bridge/devices` MQTT in → `Build Device Map` (populates `flow.device_models`)
+
+**Device Recovery** — On Startup inject → `Recover Critical State` → MQTT out (notify)
+
+**Error Handling** — flow-wide catch → debug
+
+### Device Catalog Pattern
+
+Battery type/quantity is model-level knowledge, not device-instance knowledge. Stored in `device_catalog.json`:
+
+```json
+{
+  "models": {
+    "PS-S04D": {
+      "battery": { "type": "CR2450", "quantity": 2 }
+    },
+    "some-rechargeable-model": {
+      "rechargeable": true
+    }
+  },
+  "overrides": {
+    "office_desk_presence": {
+      "friendly_name": "Joseph's Desk Presence"
+    }
+  }
+}
+```
+
+**Maintenance burden:** Add one entry per model the first time you pair a device of that model. All subsequent devices of the same model require no config changes.
+
+### Friendly Name Derivation
+
+Registry absence is never a processing gate. Friendly names are derived automatically from the device key:
+
+```javascript
+const friendlyName = deviceKey
+    .replace(/_/g, ' ')
+    .replace(/\b\w/g, c => c.toUpperCase());
+// "office_desk_presence" → "Office Desk Presence"
+```
+
+`overrides` in `device_catalog.json` provide explicit friendly name overrides when the derived name isn't sufficient.
+
+### `Build Device Map`
+
+Subscribes to `zigbee2mqtt/bridge/devices` (retained). Fires on startup and on every Z2M restart. Builds `flow.device_models` map: `{ device_key → model_id }`. No latch needed — pure data population, no `global.config` dependency.
+
+### Graceful Degradation
+
+| Condition | Behavior |
+|-----------|----------|
+| Device not in `device_models` | Process with no model info; no battery spec |
+| Model not in catalog | WARN log, process without battery spec detail |
+| No battery spec | Notification omits type/quantity detail |
+| `battery` field absent | Message filtered in `Extract Battery`, no processing |
+
+### Startup Recovery
+
+On startup, `Recover Critical State` reads `flow.battery_states` (disk-backed) and resumes timers for any device still in `critical` state:
+- If `last_notified_critical` > 24hrs ago → notify immediately, start fresh 24hr timer
+- If `last_notified_critical` < 24hrs ago → start timer for the remaining window
+
+This guarantees no double-notification within a 24hr window and no silent drops for overdue devices.
+
+### Context Storage
+
+| Key | Store | Content |
+|-----|-------|---------|
+| `flow.battery_states` | default (disk) | `{ device_key: { state, level, last_notified_critical } }` |
+| `flow.device_models` | default (disk) | `{ device_key: model_id }` — rebuilt from Z2M on startup |
+| `flow.battery_timers` | volatile (memory) | `{ device_key: timer_handle }` — lost on restart, recovered by Recover Critical State |
+
+---
+
 ## Health Monitoring
 
 ### Philosophy
@@ -930,10 +1054,11 @@ Centralized ACK tracking for flows that need confirmation of actions.
 - [x] ~~Android TV Delivery group~~ → **Built; `nfandroidtv` via HA; severity maps to duration/color/interrupt; clears are no-ops**
 - [x] ~~WebOS Delivery group~~ → **Built; WebOS notify via HA; clears are no-ops**
 - [x] ~~Utility: Scheduler~~ → **Built and tested; three solar/fixed periods via schedex, midnight task event, startup recovery via send_state, retained state + non-retained events**
+- [x] ~~Utility: Battery Monitor~~ → **Built and tested; Z2M wildcard subscription, device_catalog.json pattern, graceful degradation, auto-derived friendly names, 24hr critical repeat timer with restart recovery**
 - [ ] **Echo Show / View Assist** — LineageOS Echo Show devices running View Assist; determine whether HA registers them as `mobile_app_*` (→ `ha_companion` channel, no new plumbing) or as Android TV devices (→ `android_tv` endpoint type); add to `notifications.json` accordingly after setup
 - [ ] **Voice notifications** — Completely separate from visual notifications; different payload schema (`tts_text`, target speaker, voice/language, volume, interruptible vs queued); publish to `highland/event/speak`; handled by a future `Utility: Voice` flow; callers may publish to both `highland/event/notify` and `highland/event/speak` independently when both visual and spoken delivery is desired
 - [ ] **Action responses** — deferred until actionable notifications are implemented
 
 ---
 
-*Last Updated: 2026-03-23*
+*Last Updated: 2026-03-24*
