@@ -612,7 +612,7 @@
             "c429fd81ed1ad975"
         ],
         "x": 54,
-        "y": 839,
+        "y": 919,
         "w": 812,
         "h": 142
     },
@@ -633,12 +633,15 @@
             "1977d3cb92d3e957",
             "069a76d30ec3de29",
             "9fe3889554db0a66",
-            "05d5c9a8a0b7fa39"
+            "05d5c9a8a0b7fa39",
+            "30cdc1e4a0231d7f",
+            "f901bca518967c31",
+            "b89fd8a9c5c9c29c"
         ],
         "x": 54,
-        "y": 1039,
-        "w": 712,
-        "h": 202
+        "y": 1099,
+        "w": 752,
+        "h": 262
     },
     {
         "id": "un-tv-routing-group",
@@ -673,13 +676,17 @@
         "nodes": [
             "un-androidtv-link-in",
             "un-androidtv-build-call",
-            "un-androidtv-service-call",
-            "un-androidtv-return"
+            "un-androidtv-return",
+            "01419936e2482cbc",
+            "93880073f7ca3c79",
+            "fcb78653da9a4c14",
+            "0d5f4906c37d9bb6",
+            "d9b36a5ed69f35a6"
         ],
         "x": 54,
         "y": 599,
-        "w": 822,
-        "h": 82
+        "w": 1502,
+        "h": 142
     },
     {
         "id": "un-webos-group",
@@ -696,7 +703,7 @@
             "un-webos-return"
         ],
         "x": 54,
-        "y": 719,
+        "y": 779,
         "w": 782,
         "h": 82
     },
@@ -976,7 +983,7 @@
             "1bec6aa6e36936dd"
         ],
         "x": 140,
-        "y": 880,
+        "y": 960,
         "wires": [
             [
                 "c429fd81ed1ad975"
@@ -998,7 +1005,7 @@
         "finalize": "",
         "libs": [],
         "x": 560,
-        "y": 880,
+        "y": 960,
         "wires": [
             [
                 "un-log-mqtt-out"
@@ -1016,7 +1023,7 @@
         "retain": "false",
         "broker": "4cefa2ad2d8b462e",
         "x": 780,
-        "y": 880,
+        "y": 960,
         "wires": []
     },
     {
@@ -1033,7 +1040,7 @@
         "finalize": "",
         "libs": [],
         "x": 540,
-        "y": 940,
+        "y": 1020,
         "wires": []
     },
     {
@@ -1055,7 +1062,7 @@
         "payload": "",
         "payloadType": "date",
         "x": 200,
-        "y": 1080,
+        "y": 1320,
         "wires": [
             [
                 "un-test-build-message"
@@ -1076,7 +1083,7 @@
         "finalize": "",
         "libs": [],
         "x": 460,
-        "y": 1080,
+        "y": 1320,
         "wires": [
             [
                 "un-test-mqtt-out"
@@ -1099,7 +1106,7 @@
         "expiry": "",
         "broker": "4cefa2ad2d8b462e",
         "x": 670,
-        "y": 1080,
+        "y": 1320,
         "wires": []
     },
     {
@@ -1121,7 +1128,7 @@
         "payload": "",
         "payloadType": "date",
         "x": 210,
-        "y": 1140,
+        "y": 1200,
         "wires": [
             [
                 "5cea0bbf5d65863d"
@@ -1142,7 +1149,7 @@
         "finalize": "",
         "libs": [],
         "x": 480,
-        "y": 1140,
+        "y": 1200,
         "wires": [
             [
                 "1977d3cb92d3e957"
@@ -1165,7 +1172,7 @@
         "expiry": "",
         "broker": "4cefa2ad2d8b462e",
         "x": 690,
-        "y": 1140,
+        "y": 1200,
         "wires": []
     },
     {
@@ -1187,7 +1194,7 @@
         "payload": "",
         "payloadType": "date",
         "x": 210,
-        "y": 1200,
+        "y": 1260,
         "wires": [
             [
                 "9fe3889554db0a66"
@@ -1208,7 +1215,7 @@
         "finalize": "",
         "libs": [],
         "x": 470,
-        "y": 1200,
+        "y": 1260,
         "wires": [
             [
                 "05d5c9a8a0b7fa39"
@@ -1231,7 +1238,7 @@
         "expiry": "",
         "broker": "4cefa2ad2d8b462e",
         "x": 670,
-        "y": 1200,
+        "y": 1260,
         "wires": []
     },
     {
@@ -1319,7 +1326,7 @@
             }
         ],
         "x": 330,
-        "y": 880,
+        "y": 960,
         "wires": [
             [
                 "un-format-log-message"
@@ -1351,8 +1358,13 @@
         "z": "utility-notifications",
         "g": "un-tv-routing-group",
         "name": "Set Entity ID",
-        "func": "msg.entity_id = msg.payload._delivery.address.media_player;\nreturn msg;",
+        "func": "msg.payload.entityId = msg.payload._delivery.address.media_player;\n\nreturn msg;",
         "outputs": 1,
+        "timeout": "",
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "libs": [],
         "x": 390,
         "y": 460,
         "wires": [
@@ -1398,8 +1410,13 @@
         "z": "utility-notifications",
         "g": "un-tv-routing-group",
         "name": "Resolve Endpoint",
-        "func": "const { _delivery } = msg.payload;\n\n// Clear path — TV auto-dismisses, return immediately\nif (_delivery.type === 'clear') {\n    msg.log_message = `TV clear ignored for ${_delivery.key} — auto-dismiss`;\n    return [null, msg];\n}\n\n// TV off or unavailable — drop\nconst entityState = msg.data;\nif (!entityState || ['off', 'unavailable', 'unknown'].includes(entityState.state)) {\n    node.warn(`TV ${_delivery.address.media_player} is ${entityState?.state || 'unknown'} — dropping notification`);\n    msg.log_level = 'WARN';\n    msg.log_message = `TV notification dropped for ${_delivery.key} — device ${entityState?.state || 'unavailable'}`;\n    return [null, msg];\n}\n\n// Resolve source → endpoint type\nconst currentSource = entityState.attributes?.source;\nconst sourceEntry = _delivery.address.sources?.find(s => s.name === currentSource);\n\nif (!sourceEntry) {\n    node.warn(`TV source '${currentSource}' not configured for ${_delivery.key} — dropping`);\n    msg.log_level = 'WARN';\n    msg.log_message = `TV notification dropped for ${_delivery.key} — source '${currentSource}' not in config`;\n    return [null, msg];\n}\n\n// Look up endpoint address\nconst endpointAddress = _delivery.address.endpoints?.[sourceEntry.type];\nif (!endpointAddress) {\n    node.warn(`No endpoint for type '${sourceEntry.type}' for ${_delivery.key}`);\n    msg.log_level = 'WARN';\n    msg.log_message = `TV notification dropped for ${_delivery.key} — no endpoint for type '${sourceEntry.type}'`;\n    return [null, msg];\n}\n\n// Update delivery with resolved address and route to correct delivery group\nmsg.payload._delivery = {\n    ..._delivery,\n    address: endpointAddress,\n    endpoint_type: sourceEntry.type\n};\n\nconst targetMap = {\n    android_tv: 'Android TV Delivery',\n    webos: 'WebOS Delivery'\n};\nmsg.target = targetMap[sourceEntry.type];\nif (!msg.target) {\n    node.warn(`Unknown TV endpoint type: ${sourceEntry.type}`);\n    msg.log_level = 'WARN';\n    msg.log_message = `TV notification dropped for ${_delivery.key} — unknown type '${sourceEntry.type}'`;\n    return [null, msg];\n}\n\nreturn [msg, null];",
+        "func": "const { _delivery } = msg.payload;\n\n// Clear path — TV auto-dismisses\nif (_delivery.type === 'clear') {\n    msg.log_message = `TV clear ignored for ${_delivery.key} — auto-dismiss`;\n    return [null, msg];\n}\n\n// TV off or unavailable — drop\nconst state = msg.data;\nif (['off', 'unavailable', 'unknown'].includes(state)) {\n    msg.log_message = `TV notification dropped for ${_delivery.key} — TV is ${state}`;\n    return [null, msg];\n}\n\n// TV is on — route to Android TV Delivery (phase 1: no source detection)\nmsg.target = 'Android TV Delivery';\nreturn [msg, null];",
         "outputs": 2,
+        "timeout": "",
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "libs": [],
         "x": 810,
         "y": 460,
         "wires": [
@@ -1463,7 +1480,7 @@
         "y": 640,
         "wires": [
             [
-                "un-androidtv-build-call"
+                "01419936e2482cbc"
             ]
         ],
         "l": true
@@ -1474,43 +1491,18 @@
         "z": "utility-notifications",
         "g": "un-androidtv-group",
         "name": "Build Android TV Call",
-        "func": "const { _delivery, severity, title, message, media } = msg.payload;\n\n// Map severity to display duration and color\nconst durationMap = { low: 4, medium: 6, high: 10, critical: 15 };\nconst colorMap = { low: 'grey', medium: 'cyan', high: 'amber', critical: 'red' };\n\nmsg.payload = {\n    action: _delivery.address,\n    data: {\n        title,\n        message,\n        data: {\n            duration: durationMap[severity] || 6,\n            position: 'bottom-right',\n            fontsize: 'medium',\n            transparency: '25%',\n            color: colorMap[severity] || 'grey',\n            interrupt: severity === 'critical' ? 1 : 0,\n            ...(media?.image ? { image: { url: media.image } } : {})\n        }\n    }\n};\n\nmsg.log_message = `Android TV notification delivered to ${_delivery.key}`;\nreturn msg;",
+        "func": "const { _delivery, title, message, icon, media } = msg.payload;\nconst { host, port } = _delivery.address.android_tv;\n\nconst body = {\n    title: title || null,\n    message: message || null,\n    source: 'Highland',\n    smallIcon: icon || null,\n    image: media?.image || null,\n    video: media?.video || null\n};\n\n// Strip null fields\nObject.keys(body).forEach(k => body[k] === null && delete body[k]);\n\nmsg.payload = body;\nmsg.url = `http://${host}:${port}/notify`;\n\nconst formatStatus = global.get('utils.formatStatus', 'initializers');\nnode.status({ fill: 'blue', shape: 'dot', text: formatStatus(`→ ${_delivery.key}`) });\n\nmsg.log_message = `TvOverlay notification delivered to ${_delivery.key}`;\nreturn msg;",
         "outputs": 1,
-        "x": 410,
+        "timeout": "",
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "libs": [],
+        "x": 1100,
         "y": 640,
         "wires": [
             [
-                "un-androidtv-service-call"
-            ]
-        ]
-    },
-    {
-        "id": "un-androidtv-service-call",
-        "type": "api-call-service",
-        "z": "utility-notifications",
-        "g": "un-androidtv-group",
-        "name": "Notify Android TV",
-        "server": "aa5463113481df19",
-        "version": 7,
-        "debugenabled": false,
-        "action": "",
-        "floorId": [],
-        "areaId": [],
-        "deviceId": [],
-        "entityId": [],
-        "labelId": [],
-        "data": "payload.data",
-        "dataType": "jsonata",
-        "mergeContext": "",
-        "mustacheAltTags": false,
-        "outputProperties": [],
-        "queue": "none",
-        "blockInputOverrides": false,
-        "x": 670,
-        "y": 640,
-        "wires": [
-            [
-                "un-androidtv-return"
+                "0d5f4906c37d9bb6"
             ]
         ]
     },
@@ -1522,7 +1514,7 @@
         "name": "Android TV Return",
         "mode": "return",
         "links": [],
-        "x": 835,
+        "x": 1515,
         "y": 640,
         "wires": []
     },
@@ -1534,7 +1526,7 @@
         "name": "WebOS Delivery",
         "links": [],
         "x": 160,
-        "y": 760,
+        "y": 820,
         "wires": [
             [
                 "un-webos-build-call"
@@ -1551,7 +1543,7 @@
         "func": "const { _delivery, severity, title, message } = msg.payload;\n\n// WebOS notify service — simple title + message overlay\nmsg.payload = {\n    action: _delivery.address,\n    data: {\n        title,\n        message\n    }\n};\n\nmsg.log_message = `WebOS notification delivered to ${_delivery.key}`;\nreturn msg;",
         "outputs": 1,
         "x": 390,
-        "y": 760,
+        "y": 820,
         "wires": [
             [
                 "un-webos-service-call"
@@ -1581,7 +1573,7 @@
         "queue": "none",
         "blockInputOverrides": false,
         "x": 630,
-        "y": 760,
+        "y": 820,
         "wires": [
             [
                 "un-webos-return"
@@ -1597,7 +1589,198 @@
         "mode": "return",
         "links": [],
         "x": 795,
-        "y": 760,
+        "y": 820,
+        "wires": []
+    },
+    {
+        "id": "01419936e2482cbc",
+        "type": "function",
+        "z": "utility-notifications",
+        "g": "un-androidtv-group",
+        "name": "Set Entity ID",
+        "func": "msg.payload.entityId = msg.payload._delivery.address.android_tv.media_player;\nreturn msg;",
+        "outputs": 1,
+        "timeout": 0,
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "libs": [],
+        "x": 390,
+        "y": 640,
+        "wires": [
+            [
+                "93880073f7ca3c79"
+            ]
+        ]
+    },
+    {
+        "id": "93880073f7ca3c79",
+        "type": "api-current-state",
+        "z": "utility-notifications",
+        "g": "un-androidtv-group",
+        "name": "Get Android TV State",
+        "server": "aa5463113481df19",
+        "version": 3,
+        "outputs": 1,
+        "halt_if": "",
+        "halt_if_type": "str",
+        "halt_if_compare": "is",
+        "entity_id": "",
+        "state_type": "str",
+        "blockInputOverrides": false,
+        "outputProperties": [
+            {
+                "property": "data",
+                "propertyType": "msg",
+                "value": "",
+                "valueType": "entity"
+            }
+        ],
+        "for": "0",
+        "forType": "num",
+        "forUnits": "minutes",
+        "override_topic": false,
+        "state_location": "payload",
+        "override_payload": "msg",
+        "entity_location": "data",
+        "override_data": "msg",
+        "x": 620,
+        "y": 640,
+        "wires": [
+            [
+                "d9b36a5ed69f35a6"
+            ]
+        ]
+    },
+    {
+        "id": "fcb78653da9a4c14",
+        "type": "link out",
+        "z": "utility-notifications",
+        "g": "un-androidtv-group",
+        "name": "Android TV Return",
+        "mode": "return",
+        "links": [],
+        "x": 1015,
+        "y": 700,
+        "wires": []
+    },
+    {
+        "id": "0d5f4906c37d9bb6",
+        "type": "http request",
+        "z": "utility-notifications",
+        "g": "un-androidtv-group",
+        "name": "Notify Android TV",
+        "method": "POST",
+        "ret": "obj",
+        "paytoqs": "ignore",
+        "url": "",
+        "tls": "",
+        "persist": false,
+        "proxy": "",
+        "insecureHTTPParser": false,
+        "authType": "",
+        "senderr": false,
+        "headers": [],
+        "x": 1350,
+        "y": 640,
+        "wires": [
+            [
+                "un-androidtv-return"
+            ]
+        ]
+    },
+    {
+        "id": "d9b36a5ed69f35a6",
+        "type": "function",
+        "z": "utility-notifications",
+        "g": "un-androidtv-group",
+        "name": "Evaluate STB State",
+        "func": "const state = msg.data.state;\n\nif (['off', 'unavailable', 'unknown'].includes(state)) {\n    const formatStatus = global.get('utils.formatStatus', 'initializers');\n    node.status({ fill: 'grey', shape: 'dot', text: formatStatus(`STB ${state} — skipped`) });\n    return [null, msg];\n}\n\nreturn [msg, null];",
+        "outputs": 2,
+        "timeout": 0,
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "libs": [],
+        "x": 850,
+        "y": 640,
+        "wires": [
+            [
+                "un-androidtv-build-call"
+            ],
+            [
+                "fcb78653da9a4c14"
+            ]
+        ]
+    },
+    {
+        "id": "30cdc1e4a0231d7f",
+        "type": "inject",
+        "z": "utility-notifications",
+        "g": "un-test-group",
+        "name": "Send Android TV Notification",
+        "props": [
+            {
+                "p": "payload"
+            },
+            {
+                "p": "topic",
+                "vt": "str"
+            }
+        ],
+        "repeat": "",
+        "crontab": "",
+        "once": false,
+        "onceDelay": 0.1,
+        "topic": "",
+        "payload": "",
+        "payloadType": "date",
+        "x": 220,
+        "y": 1140,
+        "wires": [
+            [
+                "f901bca518967c31"
+            ]
+        ]
+    },
+    {
+        "id": "f901bca518967c31",
+        "type": "function",
+        "z": "utility-notifications",
+        "g": "un-test-group",
+        "name": "Build Android TV Payload",
+        "func": "msg.payload = {\n    timestamp: new Date().toISOString(),\n    source: 'test',\n    targets: ['areas.living_room.tv'],\n    severity: 'medium',\n    title: 'Highland TV Test',\n    message: 'TvOverlay pipeline test — if you see this on the TV, it works.',\n    icon: 'mdi:television-play',\n    group: 'highland_test'\n};\nreturn msg;",
+        "outputs": 1,
+        "timeout": 0,
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "libs": [],
+        "x": 510,
+        "y": 1140,
+        "wires": [
+            [
+                "b89fd8a9c5c9c29c"
+            ]
+        ]
+    },
+    {
+        "id": "b89fd8a9c5c9c29c",
+        "type": "mqtt out",
+        "z": "utility-notifications",
+        "g": "un-test-group",
+        "name": "Notify",
+        "topic": "highland/event/notify",
+        "qos": "2",
+        "retain": "false",
+        "respTopic": "",
+        "contentType": "",
+        "userProps": "",
+        "correl": "",
+        "expiry": "",
+        "broker": "4cefa2ad2d8b462e",
+        "x": 730,
+        "y": 1140,
         "wires": []
     },
     {
@@ -1662,7 +1845,7 @@
         "enableGlobalContextStore": false
     },
     {
-        "id": "7da291aa788e7b3c",
+        "id": "0c21828944298aff",
         "type": "global-config",
         "env": [],
         "modules": {

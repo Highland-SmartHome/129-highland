@@ -704,6 +704,7 @@ See `subsystems/CALENDAR_INTEGRATION.md` for full payload schemas and consumer p
   "title": "Lock Failed to Engage",
   "message": "Front Door Lock did not respond within 30 seconds",
   "targets": ["people.joseph.ha_companion"],
+  "icon": "mdi:lock-alert",
   "dnd_override": true,
   "actionable": true,
   "actions": [

@@ -40,6 +40,7 @@ See `standards/MQTT_TOPICS.md` for full payload schema.
 | `title` | Yes | Short summary |
 | `message` | Yes | Full detail |
 | `dnd_override` | No | Derived from severity if not specified |
+| `icon` | No | MDI icon string for TV/rich delivery channels (e.g. `mdi:motion-sensor`) |
 | `media` | No | Image and/or video URLs |
 | `actionable` | No | Can recipient respond? Default = false |
 | `actions` | No | Available response actions |
@@ -211,13 +212,87 @@ Format Log Message → MQTT out         Log to Console (node.error/warn)
 
 ---
 
+## Television Delivery (TvOverlay)
+
+Delivers notifications to Android TV devices via the [TvOverlay](https://github.com/gugutab/TvOverlay) app REST API. Phase 1 covers Android TV (FIOS STB) only. WebOS fallback is a future phase.
+
+### State Check
+
+Before delivery, the STB media player state is checked via `api-current-state`. Delivery is skipped if state is `off`, `unavailable`, or `unknown`. Any other state (`on`, `playing`, `paused`, `idle`) proceeds.
+
+### Payload Mapping
+
+| Highland field | TvOverlay field | Notes |
+|----------------|-----------------|-------|
+| `title` | `title` | Direct map |
+| `message` | `message` | Direct map |
+| `icon` | `smallIcon` | MDI string e.g. `mdi:motion-sensor`; omitted if not set |
+| `media.image` | `image` | URL; omitted if not set |
+| `media.video` | `video` | RTSP/HLS URL; omitted if not set |
+| _(hardcoded)_ | `source` | Always `"Highland"` |
+
+### Config (`notifications.json`)
+
+```json
+"living_room": {
+    "channels": {
+        "tv": {
+            "media_player": "media_player.living_room_television",
+            "android_tv": {
+                "host": "STB_IP_ADDRESS",
+                "port": 7143,
+                "media_player": "media_player.living_room_android_tv"
+            }
+        }
+    }
+}
+```
+
+`media_player` at the channel level is the TV itself (reserved for future source detection). `android_tv.media_player` is the STB entity used for state gating. `host` and `port` are the TvOverlay REST endpoint — internal IPs, not secrets.
+
+### Flow Groups
+
+TV delivery is split across two groups, preserving the branching structure needed for future WebOS fallback.
+
+**Television Routing group** — Entry point for all TV channel notifications. Checks the television entity state and routes to the appropriate delivery group.
+
+1. **Link In** (`Television Routing`) — entry from dynamic link call in Receive Notification
+2. **Set Entity ID** — sets `msg.payload.entityId` from `_delivery.address.media_player` (the TV itself)
+3. **Get TV State** — `api-current-state` node; full entity written to `msg.data`
+4. **Resolve Endpoint** — checks `msg.data.state`; drops if `off`/`unavailable`/`unknown`; routes to `Android TV Delivery` (phase 1 — no source detection yet); handles clear path with immediate return
+5. **TV Dispatch** — `link call` (dynamic), 30s timeout; routes to delivery group by `msg.target`
+6. **Link Out** (return mode) — Television Routing Return
+
+**Android TV Delivery group** — Checks the STB state before committing to TvOverlay delivery.
+
+1. **Link In** (`Android TV Delivery`) — entry from TV Dispatch
+2. **Set Entity ID** — sets `msg.payload.entityId` from `_delivery.address.android_tv.media_player` (the STB)
+3. **Get Android TV State** — `api-current-state` node; full entity written to `msg.data`
+4. **Evaluate STB State** — Output 1: STB active → proceed; Output 2: `off`/`unavailable`/`unknown` → Link Out return (avoids link call timeout)
+5. **Build Android TV Call** — builds TvOverlay POST body from notification payload; sets `msg.url`
+6. **Notify Android TV** — HTTP request POST to TvOverlay `/notify`, returns JSON object
+7. **Link Out** (return mode) — Android TV Return
+
+**WebOS Delivery group** — Placeholder for phase 2. Uses HA `api-call-service` with a simple title/message payload. Not yet routed to in phase 1.
+
+### Future Enhancements
+
+- **Clear support** — TvOverlay's REST API supports dismissing notifications by ID (`DELETE /notify/{id}`). Currently skipped in the Television Routing group (`Resolve Endpoint` clear path returns immediately). Revisit when a concrete use case emerges.
+- **Notification timeout** — TvOverlay defaults to 5 seconds display duration. The `duration` field on the `/notify` payload accepts a per-message override in seconds, and omitting it defers to the app's configured default. Persistent notifications are also supported. The current implementation uses the app default; add `duration` to `Build Android TV Call` if a specific timeout or persistence is needed per notification type.
+- **Tagging / in-place update** — TvOverlay supports updating an already-displayed notification by reusing its `id`. Not yet wired up, but the likely first use case is progressive notifications during video analysis (e.g. updating a motion alert as the analysis pipeline refines its result). When that lands, `correlation_id` from the Highland payload is the natural source for the TvOverlay `id`.
+
+### Future: WebOS Fallback
+
+When TV is on but STB is off (or source is Xbox/PlayStation), fall back to native WebOS notification via `notify.living_room_lg_tv`. Source detection uses `media_player.living_room_television` current source matched against the `sources` array in config.
+
+---
+
 ## Future Channels (Deferred)
 
 | Channel | Notes |
 |---------|-------|
 | `telegram` | Two-way interaction possible |
 | `signal` | Privacy-focused |
-| `tv` | HA notification to TV entity |
 | `tts` | Text-to-speech on smart speakers — see `highland/event/speak` |
 | `email` | SMTP integration |
 
@@ -225,4 +300,4 @@ Adding a new channel: add a case to `resolveLinkTarget()`, build a new delivery 
 
 ---
 
-*Last Updated: 2026-03-26*
+*Last Updated: 2026-03-27*
