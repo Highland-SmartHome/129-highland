@@ -6,6 +6,9 @@
     "PS-S04D": {
       "battery": { "type": "CR2450", "quantity": 2 }
     },
+    "SNZB-01P": {
+      "battery": { "type": "CR2477", "quantity": 1 }
+    },
     "SNZB-02P": {
       "battery": { "type": "CR2477", "quantity": 1 }
     }

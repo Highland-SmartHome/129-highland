@@ -926,6 +926,57 @@ See `subsystems/CALENDAR_INTEGRATION.md` for full payload schemas and consumer p
 
 ---
 
+#### Appliance Attention
+
+**Architecture:** Per-appliance attention state machines that run above cycle detection. Answers "does this appliance require human action?" See `subsystems/DISHWASHER_ATTENTION.md` and `subsystems/WASHER_DRYER_ATTENTION.md`.
+
+**`highland/state/appliance/{appliance}/attention`** ← RETAINED
+
+`{appliance}` values: `washing_machine` | `dryer` | `dishwasher`
+
+Dishwasher payload:
+```json
+{
+  "timestamp": "2026-04-03T10:00:00Z",
+  "source": "dishwasher_attention",
+  "state": "CLEAN_UNATTENDED",
+  "cycle_finished_at": "2026-04-03T09:30:00Z",
+  "last_door_event_at": "2026-04-03T09:45:00Z",
+  "last_door_angle": 12.3
+}
+```
+
+Washer / dryer payload:
+```json
+{
+  "timestamp": "2026-04-03T10:00:00Z",
+  "source": "washer_attention",
+  "state": "UNATTENDED",
+  "cycle_finished_at": "2026-04-03T09:30:00Z",
+  "presence_last_detected_at": null
+}
+```
+
+Dishwasher `state` values: `IDLE_DIRTY` | `RUNNING` | `CLEAN_UNATTENDED` | `LIKELY_EMPTY`
+
+Washer / dryer `state` values: `IDLE` | `RUNNING` | `UNATTENDED` | `LIKELY_ATTENDED`
+
+**`highland/event/appliance/{appliance}/attention_changed`**
+
+```json
+{
+  "timestamp": "2026-04-03T10:00:00Z",
+  "source": "dishwasher_attention",
+  "previous_state": "CLEAN_UNATTENDED",
+  "new_state": "IDLE_DIRTY",
+  "trigger": "button"
+}
+```
+
+`trigger` values: `button` | `voice` | `tilt_guest_heuristic` | `presence_heuristic` | `timeout` | `cycle_started` | `cycle_finished`
+
+---
+
 ### Security
 
 **`highland/state/security/mode`** ← RETAINED
@@ -1215,6 +1266,8 @@ HA audit payload (last backup older than 26 hours):
 | `highland/event/garage/#` | All garage events |
 | `highland/event/appliance/#` | All appliance cycle events |
 | `highland/event/appliance/+/cycle_finished` | Any machine finishing |
+| `highland/state/appliance/+/attention` | All appliance attention states |
+| `highland/event/appliance/+/attention_changed` | All appliance attention transitions |
 | `highland/event/+/leak/#` | Any leak in any area |
 | `highland/event/+/motion_detected` | Any motion in any area |
 | `highland/status/#` | All health and heartbeat |
@@ -1238,4 +1291,4 @@ HA audit payload (last backup older than 26 hours):
 
 ---
 
-*Last Updated: 2026-04-02*
+*Last Updated: 2026-04-03*

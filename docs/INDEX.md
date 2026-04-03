@@ -98,6 +98,8 @@ Domain-specific designs. Each subsystem is fully designed and ready for implemen
 | Document | Status | When to Reference |
 |----------|--------|------------------|
 | [`subsystems/APPLIANCE_MONITORING.md`](subsystems/APPLIANCE_MONITORING.md) | ✅ Designed | ZEN15 cycle detection, energy gate, per-appliance config, PostgreSQL schema |
+| [`subsystems/DISHWASHER_ATTENTION.md`](subsystems/DISHWASHER_ATTENTION.md) | ✅ Designed | Dishwasher attention state machine — tilt sensor, button, guest heuristic, CLEAN_UNATTENDED/LIKELY_EMPTY states |
+| [`subsystems/WASHER_DRYER_ATTENTION.md`](subsystems/WASHER_DRYER_ATTENTION.md) | ✅ Designed | Washer & dryer attention state machines — PIR presence, button, UNATTENDED/LIKELY_ATTENDED states |
 | [`subsystems/CALENDAR_INTEGRATION.md`](subsystems/CALENDAR_INTEGRATION.md) | ✅ Designed | Google Calendar bridge, attendee-based camera suppression, stateless re-derivation |
 | [`subsystems/GARAGE_DOOR.md`](subsystems/GARAGE_DOOR.md) | ✅ Designed | Konnected GDO blaQ, SSE stream integration, REST commands, MQTT Discovery |
 | [`subsystems/LORA.md`](subsystems/LORA.md) | ✅ Designed | LoRaWAN gateway relay, bin monitoring state machine, mailbox delivery detection |
@@ -168,4 +170,4 @@ New automation ideas → `AUTOMATION_BACKLOG.md`. Don't derail current work; cap
 
 ---
 
-*Last Updated: 2026-04-02*
+*Last Updated: 2026-04-03*
