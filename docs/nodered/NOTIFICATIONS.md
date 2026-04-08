@@ -31,7 +31,37 @@ See `standards/MQTT_TOPICS.md` for full payload schema.
 
 ---
 
-## Notification Payload Fields
+## Channel Feature Matrix
+
+What each delivery channel currently supports. Reflects the current implementation — pending features are noted with their tracking issue.
+
+| Feature | HA Companion | Android TV (TvOverlay) | WebOS |
+|---------|:------------:|:---------------------:|:-----:|
+| `title` | ✅ | ✅ | ✅ |
+| `message` | ✅ | ✅ | ✅ |
+| `severity` → channel mapping | ✅ | — | — |
+| `icon` (MDI) | — | ✅ as `smallIcon` → pending #11 | — |
+| `largeIcon` (MDI) | — | 📋 #11 | — |
+| `smallIcon` (MDI) | — | 📋 #11 | — |
+| `smallIconColor` (hex tint) | — | 📋 #12 (needs #11) | — |
+| `media.image` (URL) | ✅ | ✅ | — |
+| `media.video` (URL) | — | ✅ | — |
+| `sticky` / persistent | ✅ | — | — |
+| `group` | ✅ | — | — |
+| `correlation_id` / tag | ✅ | — | — |
+| Clear notification | ✅ | — (auto-dismiss) | — (auto-dismiss) |
+| `actionable` / `actions` | ✅ | — | — |
+| State gating (skip if off) | — | ✅ (STB + TV state) | — |
+| DnD override | Device-side only | — | — |
+
+**Notes:**
+- Android TV `source` is always hardcoded to `'Highland'`
+- WebOS delivery uses a simple title/message overlay via HA service call — no rich fields supported
+- HA Companion severity maps to Android notification channel IDs (`highland_low`, `highland_default`, `highland_high`, `highland_critical`) — user configures DnD per channel on device
+- `— ` means the field is silently ignored by that channel, not that it causes an error
+
+---
+
 
 | Field | Required | Description |
 |-------|----------|-------------|
