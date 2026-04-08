@@ -1493,7 +1493,7 @@
         "z": "utility-notifications",
         "g": "un-androidtv-group",
         "name": "Build Android TV Call",
-        "func": "const { _delivery, title, message, icon, media } = msg.payload;\nconst { host, port } = _delivery.address.android_tv;\n\nconst body = {\n    title: title || null,\n    message: message || null,\n    source: 'Highland',\n    smallIcon: icon || null,\n    image: media?.image || null,\n    video: media?.video || null\n};\n\n// Strip null fields\nObject.keys(body).forEach(k => body[k] === null && delete body[k]);\n\nmsg.payload = body;\nmsg.url = `http://${host}:${port}/notify`;\n\nconst formatStatus = global.get('utils.formatStatus', 'initializers');\nnode.status({ fill: 'blue', shape: 'dot', text: formatStatus(`→ ${_delivery.key}`) });\n\nmsg.log_message = `TvOverlay notification delivered to ${_delivery.key}`;\nreturn msg;",
+        "func": "const { _delivery, title, message, largeIcon, smallIcon, smallIconColor, media } = msg.payload;\nconst { host, port } = _delivery.address.android_tv;\n\nconst body = {\n    title:          title          || null,\n    message:        message        || null,\n    source:         'Highland Smart Home',\n    largeIcon:      largeIcon      || null,\n    smallIcon:      smallIcon      || null,\n    smallIconColor: smallIconColor || null,\n    image:          media?.image   || null,\n    video:          media?.video   || null\n};\n\n// Strip null fields\nObject.keys(body).forEach(k => body[k] === null && delete body[k]);\n\nmsg.payload = body;\nmsg.url = `http://${host}:${port}/notify`;\n\nconst formatStatus = global.get('utils.formatStatus', 'initializers');\nnode.status({ fill: 'blue', shape: 'dot', text: formatStatus(`→ ${_delivery.key}`) });\n\nmsg.log_message = `TvOverlay notification delivered to ${_delivery.key}`;\nreturn msg;",
         "outputs": 1,
         "timeout": "",
         "noerr": 0,
@@ -1889,7 +1889,7 @@
         "enableGlobalContextStore": false
     },
     {
-        "id": "1dc15a3811c12b7e",
+        "id": "8b626a055c015ded",
         "type": "global-config",
         "env": [],
         "modules": {

@@ -7,8 +7,8 @@
         "venting_timeout_s": 900,
         "guest_duration_s": 360,
         "likely_empty_timeout_h": 2,
-        "nag_first_h": 1,
-        "nag_repeat_h": 2,
+        "nag_duration_h": 1,
+        "nag_max": 1,
         "notify_on_likely_empty_timeout": false
       },
       "cycle": {

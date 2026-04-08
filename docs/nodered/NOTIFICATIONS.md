@@ -40,10 +40,10 @@ What each delivery channel currently supports. Reflects the current implementati
 | `title` | ✅ | ✅ | ✅ |
 | `message` | ✅ | ✅ | ✅ |
 | `severity` → channel mapping | ✅ | — | — |
-| `icon` (MDI) | — | ✅ as `smallIcon` → pending #11 | — |
-| `largeIcon` (MDI) | — | 📋 #11 | — |
-| `smallIcon` (MDI) | — | 📋 #11 | — |
-| `smallIconColor` (hex tint) | — | 📋 #12 (needs #11) | — |
+| `icon` (MDI) | — | ~~as `smallIcon`~~ removed | — |
+| `largeIcon` (MDI) | — | ✅ | — |
+| `smallIcon` (MDI) | — | ✅ | — |
+| `smallIconColor` (hex tint) | — | ✅ | — |
 | `media.image` (URL) | ✅ | ✅ | — |
 | `media.video` (URL) | — | ✅ | — |
 | `sticky` / persistent | ✅ | — | — |
@@ -70,7 +70,9 @@ What each delivery channel currently supports. Reflects the current implementati
 | `severity` | Required if no `notification_id` | `low`, `medium`, `high`, `critical` |
 | `title` | Yes | Short summary |
 | `message` | Yes | Full detail |
-| `icon` | No | MDI icon string for TV/rich delivery channels (e.g. `mdi:motion-sensor`) |
+| `largeIcon` | No | MDI icon string — primary/large icon for TV delivery (e.g. `mdi:dishwasher`) |
+| `smallIcon` | No | MDI icon string — secondary/badge icon for TV delivery (e.g. `mdi:check-circle`) |
+| `smallIconColor` | No | Hex color tint for `smallIcon` — 6 or 8 digit hex, `#` optional (e.g. `#00CC00`) |
 | `media` | No | Image and/or video URLs |
 | `actionable` | No | Can recipient respond? Default = false |
 | `actions` | No | Available response actions |
@@ -386,4 +388,4 @@ Adding a new channel: add a case to `resolveLinkTarget()`, build a new delivery 
 
 ---
 
-*Last Updated: 2026-04-07*
+*Last Updated: 2026-04-08*
