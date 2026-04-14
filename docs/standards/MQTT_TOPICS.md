@@ -395,7 +395,7 @@ Current precipitation event state. Distinct from conditions — this is the acti
 
 **`highland/state/weather/analysis`** ← RETAINED
 
-Current precipitation threat analysis from `Utility: Weather Analysis`. Published every minute by CronPlus (1-minute continuous cadence on paid PirateWeather plan). PirateWeather minutely data cross-validated against Tempest ground truth. Single topic serves both operational consumers and HA sensor entity.
+Current precipitation threat analysis from `Utility: Weather Analysis`. Published every minute by CronPlus assembly cycle. Multi-source: OWM OneCall v3 provides minutely data (90-second acquisition), Open-Meteo provides hourly convective instability, Tempest provides `minutely[0]` ground truth. Single topic serves both operational consumers and HA sensor entity.
 
 | | |
 |--|--|
@@ -405,8 +405,7 @@ Current precipitation threat analysis from `Utility: Weather Analysis`. Publishe
 
 ```json
 {
-  "timestamp": "2026-04-13T12:00:00Z",
-  "hrrr_age_minutes": 45,
+  "timestamp": "2026-04-14T15:00:00Z",
   "has_threat": true,
   "onset_minutes": 14,
   "clear_minutes": 37,
@@ -414,13 +413,10 @@ Current precipitation threat analysis from `Utility: Weather Analysis`. Publishe
   "extends_to_end": false,
   "all_types": ["rain"],
   "peak_intensity": 0.08,
-  "cape": 0,
-  "nearest_storm_miles": 12.4,
-  "nearest_storm_bearing": 228,
-  "precip_type_model": "rain",
+  "cape": 480,
   "threat_type": "Rain",
   "message": "Rain starting in 14 minutes",
-  "source": "pirate_weather",
+  "source": "owm",
   "minutely": [
     { "t": 1744545600, "i": 0.0, "p": 0.0, "k": "none" },
     { "t": 1744545660, "i": 0.0, "p": 0.12, "k": "none" }
@@ -430,11 +426,11 @@ Current precipitation threat analysis from `Utility: Weather Analysis`. Publishe
 
 `threat_type` — title-cased precipitation type when `has_threat` is true, `null` otherwise. HA entity state; changes only when threat type changes (cleaner history than `message`). Values: `Rain` | `Snow` | `Sleet` | `Rain and Snow` | `Rain and Sleet` | `Snow and Sleet` | `Rain, Snow, and Sleet` | `Heavy Rain` | `Heavy Snow` | `Thunderstorms` | `Thundersnow` | `null`.
 
-`message` — human-readable AccuWeather-style summary string, or `null` when no threat. HA entity attribute. Examples: `"Rain starting in 14 minutes"`, `"Rain continuing for at least 60 minutes"`, `"Periods of rain for the next 23 minutes"`.
+`message` — human-readable AccuWeather-style summary string, or `null` when no threat. HA entity attribute.
 
-`hrrr_age_minutes` — age of the HRRR subhourly model data in minutes. Values above ~240 indicate stale forecast data.
+`cape` — current-hour CAPE from Open-Meteo convective section (J/kg).
 
-`minutely` — compact 61-entry array of per-minute forecast data for dashboard chart rendering. Fields: `t` (Unix timestamp), `i` (precip intensity in/hr), `p` (precip probability 0–1), `k` (precip type string).
+`minutely` — compact 60-entry array of per-minute forecast data. Fields: `t` (Unix timestamp), `i` (precip intensity in/hr), `p` (precip probability 0–1), `k` (precip type string). `minutely[0]` is always Tempest ground truth.
 
 **HA Discovery:** `sensor.weather_analysis` under `Highland Weather Analysis` device. `value_template: "{{ value_json.threat_type if value_json.threat_type else 'Clear' }}"`; `json_attributes_topic` same as `state_topic`.
 
@@ -1448,4 +1444,4 @@ HA audit payload (last backup older than 26 hours):
 
 ---
 
-*Last Updated: 2026-04-13*
+*Last Updated: 2026-04-14*

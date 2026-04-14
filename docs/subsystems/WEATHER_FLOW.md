@@ -11,16 +11,20 @@ Two separate Node-RED flows, both built and publishing:
 
 **Primary consumer:** Both Tier 1 flows feed the `Utility: Daily Digest` — the forecast and any active alerts are included in the nightly digest email sent to household residents.
 
-**Tier 2 — Weather Analysis (Live)**
+**Tier 2 — Weather Analysis (Live — OWM + Open-Meteo)**
 
-`Utility: Weather Analysis` is live and polling PirateWeather every minute (1-minute continuous cadence on paid PirateWeather plan — rate limiter removed). It provides:
+`Utility: Weather Analysis` is live on a multi-source adapter architecture. PirateWeather was replaced after a 2026-04-13 event where HRRR staleness caused a missed storm cell. It provides:
+- OWM OneCall v3 minutely data (90-second acquisition cadence), normalized to canonical schema
+- Open-Meteo hourly convective instability (CAPE, lifted_index, convective_inhibition) via `global.weather_canonical`
+- Tempest ground truth replacement of `minutely[0]` — observed intensity from `rain_accumulated` delta
 - Minutely precipitation threat analysis with AccuWeather-style messaging
 - `threat_type` entity state (title-cased type, e.g. `Rain`) — cleaner history than full message string
 - Per-minute `minutely` array in state payload for dashboard chart rendering
 - Persistent HA Companion notifications for imminent precipitation events
-- Tempest cross-validation (PirateWeather forecast vs. ground truth)
 - `highland/state/weather/analysis` retained state topic
 - HA Discovery sensor (`sensor.weather_analysis` under `Highland Weather Analysis` device)
+
+PirateWeather remains a candidate for reinstatement if their planned June 2026 release addresses HRRR staleness.
 
 **Tier 2 — Weather Alerts (Enhanced — Live)**
 
@@ -32,9 +36,9 @@ Two separate Node-RED flows, both built and publishing:
 - HA Discovery sensor (`sensor.weather_alerts` under `Highland Weather Alerts` device)
 - Weather Alerts Card (HACS) installed and configured on weather dashboard
 
-Remaining Tier 2 work: `Utility: Weather Lightning` for hyperlocal lightning notifications (designed, not yet implemented — see issue #26), threshold calibration from observed weather events, and MinuteCast dashboard visualization (see issue #30).
+Remaining Tier 2 work: `Utility: Weather Lightning` (live — issue #26 closed), threshold calibration from observed weather events, and MinuteCast dashboard visualization (see issue #30). Two-state adaptive OWM polling (DORMANT 5 min / ACTIVE 90s) is Phase 2.
 
-The full synthesis layer (`highland/state/weather/conditions`) combining Tempest observations with PirateWeather data into a unified conditions snapshot is deferred until a concrete consumer need emerges.
+The full synthesis layer (`highland/state/weather/conditions`) is deferred until a concrete consumer need emerges.
 
 ---
 
@@ -46,7 +50,7 @@ Node-RED utility flow providing weather awareness, precipitation sensing, and ac
 
 ## Data Sources
 
-The Weather flow is a **black box synthesizer**. Multiple ingestion paths feed a single authoritative output. Source attribution never appears in published topics — the rest of the system sees one curated weather service.
+The Weather flow is a **black box synthesizer** built on an adapter pattern. Each source writes to `global.weather_canonical` (default/disk-backed store) via its own acquisition group. The assembly layer reads from global context and insulates all downstream logic from provider-specific formats.
 
 ### WeatherFlow Tempest Station
 
@@ -54,95 +58,73 @@ Local physical station publishing real-time observations via MQTT to the bus.
 
 **Data provided:** Temperature, humidity, dew point, pressure, wind speed/gust/bearing, UV index, solar radiation, lightning strike distance and energy (hardware detection), local precipitation (optical sensor).
 
-**Role:** Observations are ground truth for current conditions. Tempest data takes priority over model data for present-moment values. Lightning events come exclusively from Tempest hardware detection.
+**Role:** Ground truth for current conditions. `minutely[0]` in the canonical model is replaced with Tempest-observed data on each assembly cycle. Lightning events come exclusively from Tempest hardware detection.
 
-### Pirate Weather API
+**Canonical section:** `global.weather_canonical.observed`
 
-**Selected over Weatherbit:** ~$5/month vs $45/month; strong HRRR model sourcing for near-term minutely precision.
+### OpenWeatherMap (OWM) OneCall v3
 
-**Base URL:** `https://api.pirateweather.net/forecast/[apikey]/[lat],[lon]`
+Primary minutely precipitation source. Replaced PirateWeather after a 2026-04-13 event where HRRR staleness caused a missed storm cell.
 
-**Standard parameters — always include:** `?units=us&version=2`
-- `units=us` — Fahrenheit, inches, mph. Confirmed from live response.
-- `version=2` — Unlocks type-specific precipitation fields (`rainIntensity`, `snowIntensity`, `iceIntensity`), accumulation fields, `cape`, and ensemble spread (`precipIntensityError`). Always include; no reason not to.
+**Endpoint:** `https://api.openweathermap.org/data/3.0/onecall?lat={lat}&lon={lon}&exclude=current,daily,alerts&appid={key}&units=imperial`
 
-**Credentials:** `config.secrets.weather_api_key`
+**Data provided:** 60-minute precipitation forecast (`minutely`), hourly `pop` (probability of precipitation), hourly weather condition codes for type discrimination.
+
+**Acquisition cadence:** Every 90 seconds (fixed). Two-state adaptive machine (DORMANT 5 min / ACTIVE 90s) is Phase 2.
+
+**Credentials:** `config.secrets.open_weather_map.api_key`
+
+**Canonical section:** `global.weather_canonical.minutely`
+
+### Open-Meteo
+
+Convective instability data source. Free tier, no API key required.
+
+**Endpoint:** `https://api.open-meteo.com/v1/forecast?latitude={lat}&longitude={lon}&hourly=cape,lifted_index,convective_inhibition&models=gfs_seamless&forecast_days=1`
+
+**Data provided:** 24-hour hourly CAPE (J/kg), lifted index (dimensionless), convective inhibition (J/kg).
+
+**Acquisition cadence:** Every 15 minutes (fixed).
+
+**Interpreting convective data:** CAPE > 0 + lifted_index < 0 + convective_inhibition < ~50 J/kg = convection likely. LI < -3 with low CIN = significant thunderstorm potential.
+
+**Canonical section:** `global.weather_canonical.convective`
 
 ### Location Context
 
-Coordinates stored in `secrets.json` (lat/lon are private). Nearest API city: Gardnertown — confirms coordinate-based grid lookup, not population-center snap.
-
-**Microclimate note:** Hudson Valley terrain creates significant hyperlocal variation. Forecasts snapped to "Newburgh" would often be wrong for this location. The HRRR grid cell resolves to approximately 1.5 mi offset.
+Coordinates stored in `secrets.json` (lat/lon are private). Hudson Valley terrain creates significant hyperlocal variation — coordinate-based grid lookup rather than population-center snap is essential.
 
 ---
 
-## Known API Quirks
+## Canonical Schema
 
-**`-999` sentinel value:** Several fields return `-999` when data is unavailable rather than null. Must null-guard in processing. Confirmed fields: `smoke`, `fireIndex` (only available for ~first 36 hours), `smokeMax`, `fireIndexMax` in daily.
+All acquisition flows write to `global.weather_canonical` (default/disk-backed store). The assembly layer reads from it on every minute tick.
 
-**`sleetIntensity` in minutely:** Present in live response but undocumented. Treat as bonus data, not guaranteed.
+```javascript
+global.weather_canonical = {
+    sources: {
+        minutely:   { provider: 'open_weather_map', fetched_at: '...' },
+        convective: { provider: 'open_meteo',       fetched_at: '...' },
+        hourly:     { provider: null,                fetched_at: null },
+        observed:   { provider: 'tempest',          fetched_at: '...' }
+    },
+    minutely: [
+        { time, precip_intensity, precip_probability, precip_type, source }
+        // time: Unix seconds; intensity: in/hr; probability: 0.0-1.0
+        // type: 'rain'|'snow'|'sleet'|'none'; source: 'open_weather_map'|'tempest'
+    ],
+    convective: [
+        { time, cape, lifted_index, convective_inhibition }
+        // time: ISO 8601; cape: J/kg; lifted_index: dimensionless; convective_inhibition: J/kg
+    ],
+    hourly: [],   // reserved
+    observed: { precip_type, precip_intensity, rain_accumulated }
+}
+```
 
-**Rate limit headers:** `Ratelimit-Limit`, `Ratelimit-Remaining`, `Ratelimit-Reset`, `X-Forecast-API-Calls`. Log `X-Forecast-API-Calls` on every response. Alert at >50% quota before 50% through month; alert at >80% before 80% through month.
+`fetched_at` is an ISO 8601 timestamp. Freshness is computed as `(now - fetched_at)` at point of use. No pre-computed age values are stored.
 
----
-
-## Polling State Machine
-
-The core cost-control mechanism. Polling frequency scales with weather threat level.
-
-| State | Poll Interval | Purpose |
-|-------|---------------|---------|
-| `POLL_DORMANT` | 15 min | No precipitation expected; baseline monitoring |
-| `POLL_MONITOR` | 5 min | Precipitation possible within forecast window |
-| `POLL_ACTIVE` | 1 min | Precipitation imminent or occurring; full resolution |
-| `POLL_LIGHTNING` | 1 min | Thunderstorm active |
-
-### State Transitions
-
-**DORMANT → MONITOR:** Any hourly block within next 6 hours: `precipProbability > 0.40`
-
-**MONITOR → ACTIVE:** Any minutely block: `precipIntensity > 0.01 in/hr` AND `precipProbability > 0.70`, OR any hourly within next 2 hours: `precipProbability > 0.80`
-
-**ACTIVE → MONITOR:** All minutely blocks below `0.005 in/hr` for 30 consecutive minutes AND no hourly within next 2 hours exceeds `0.70`
-
-**MONITOR → DORMANT:** All hourly within next 6 hours below `0.25`; hold minimum 15 min in MONITOR before allowing transition
-
-**Any → LIGHTNING:** `cape > 2500 J/kg` in current or next 2 hourly blocks AND `precipProbability > 0.50`
-
-**LIGHTNING → ACTIVE:** `cape < 500 J/kg` sustained for 2 consecutive polls AND no lightning detection
-
-### `precipIntensityError` as Confidence Gate
-
-`precipIntensityError` is the standard deviation of `precipIntensity` across GEFS/ECMWF ensemble members. If `precipIntensityError > precipIntensity * 0.75`, treat the forecast as lower confidence and require higher `precipProbability` to trigger escalation.
-
-### `exclude` Parameter Strategy
-
-| State | `exclude` parameter |
-|-------|---------------------|
-| `POLL_DORMANT` | `minutely,alerts` |
-| `POLL_MONITOR` | `alerts` |
-| `POLL_ACTIVE` | *(none)* |
-| `POLL_LIGHTNING` | *(none)* |
-
----
-
-## Precipitation State Machine
-
-Tracks the current precipitation event lifecycle. Separate from polling state.
-
-| State | Description |
-|-------|-------------|
-| `PRECIP_NONE` | No precipitation |
-| `PRECIP_IMMINENT` | High probability within 30 minutes per minutely |
-| `PRECIP_ACTIVE` | Currently precipitating |
-| `PRECIP_TAPERING` | Intensity declining; event may be ending |
-| `PRECIP_DONE` | Event ended; cooling-off before returning to NONE |
-
-### Precipitation Type Tracking
-
-Uses v2 type-specific intensity fields: `rainIntensity`, `snowIntensity`, `iceIntensity`, `currentDaySnow`, `currentDayLiquid`, `currentDayIce`.
-
-**Derived `precipitation_type` enum:** `rain` | `snow` | `ice` | `sleet` | `mixed` | `none`
+**OWM adapter notes:** OWM minutely `precipitation` is mm — converted to in/hr: `mm * 0.0393701`. Probability derived from hourly `pop`. Type derived from hourly `weather[0].id` condition codes (5xx/3xx = rain, 6xx = snow, 511 = sleet).
 
 ---
 
@@ -182,13 +164,17 @@ Tier 2 threshold values are initial estimates — calibrate against observed eve
 
 ### Architecture
 
-`Utility: Weather Analysis` polls the PirateWeather API for minutely forecast data, analyzes the 61-minute window for precipitation threats, cross-validates against Tempest ground truth, publishes a state topic, and manages persistent HA Companion notifications.
+`Utility: Weather Analysis` is built on a multi-source adapter architecture. Independent acquisition groups populate `global.weather_canonical`. A separate assembly cycle reads from global context on every minute tick and runs the analysis pipeline.
 
-**Data source:** PirateWeather API v2 (`https://api.pirateweather.net/forecast/{key}/{lat},{lon}?units=us&version=2`). Full payload fetched on every cycle — no `exclude` parameter.
+**OWM Acquisition:** CronPlus (90s) → Build OWM Request → Fetch OWM → Normalize OWM Minutely → writes `global.weather_canonical.minutely`.
 
-**Cadence:** CronPlus fires every minute. 1-minute continuous polling on paid PirateWeather plan (Pirate Plan, 60K calls/month). Rate limiter removed.
+**Open-Meteo Acquisition:** CronPlus (15 min) → Build OM Request → Fetch OM → Normalize OM Convective → writes `global.weather_canonical.convective`.
 
-**Tempest cross-validation:** The flow subscribes to `highland/state/weather/station` and tracks `precipitation_type` in flow context. `Build Message` uses this to determine dry vs. active state, driving different message framing for the same PirateWeather analysis result.
+**Assembly Pipeline:** CronPlus (every minute) → Assemble Model (reads global context, checks minutely freshness > 5 min → skip, extracts current-hour CAPE, replaces `minutely[0]` with Tempest ground truth) → Analyze Minutely → Build Message → Publish State.
+
+**Tempest ground truth (`minutely[0]` replacement):** `Extract Station Data` tracks `rain_accumulated` delta between successive Tempest observations to derive `observed_intensity` (in/hr). On each assembly cycle, `minutely[0]` is replaced with Tempest-observed values. Guards: midnight reset (delta < 0 → use 0.01 floor if active), first-run (no prior value).
+
+**Staleness handling:** `minutely` missing or > 5 min stale → skip cycle. `convective` missing or > 60 min stale → CAPE defaults to 0, analysis continues.
 
 ### Flow Design
 
@@ -196,14 +182,15 @@ Tier 2 threshold values are initial estimates — calibrate against observed eve
 
 | Group | Purpose |
 |-------|--------|
-| **Analysis Pipeline** | Entry point: Begin Analysis Cycle link in → link calls to Forecast Acquisition, Forecast Analysis, MinuteCast Notifications |
-| **Forecast Acquisition** | link in → Build Request → Fetch Forecast → Extract Data → return link |
+| **OWM Acquisition** | CronPlus (90s) → Build OWM Request → Fetch OWM → Normalize OWM Minutely → global context |
+| **Open-Meteo Acquisition** | CronPlus (15 min) → Build OM Request → Fetch OM → Normalize OM Convective → global context |
+| **Local Observations** | MQTT In (`highland/state/weather/station`) → Extract Station Data (tracks precip type + delta intensity in flow context) |
+| **Analysis Pipeline** | Begin Analysis Cycle link in → Assemble Model → link call (Forecast Analysis) → link call (MinuteCast Notifications) → Output |
 | **Forecast Analysis** | link in → Analyze Minutely → Build Message → Publish State → return link |
 | **MinuteCast Notifications** | link in → Manage Notification → MQTT Out → return link |
-| **Local Observations** | MQTT In (`highland/state/weather/station`) → Extract Station Data (flow context only, no output) |
-| **Sinks** | CronPlus Poll (every minute, continuous) → link out to Begin Analysis Cycle |
+| **Sinks** | CronPlus Poll (every minute) → link out to Begin Analysis Cycle |
 | **Test Cases** | Force Threat + Force Clear synthetic data injectors |
-| **Home Assistant Discovery** | On Startup → Build Discovery Config → MQTT Out |
+| **Home Assistant Discovery** | On Startup → Build Sensors → MQTT Out |
 | **Error Handling** | Catch All → debug |
 
 ### Minutely Analysis
@@ -598,18 +585,18 @@ See `standards/MQTT_TOPICS.md` for authoritative payload definitions.
 ## Open Questions
 
 - [ ] Ultrasonic snow depth sensor hardware selection and mounting
-- [ ] Optimal `precipIntensityError` confidence gate threshold — calibrate from observed events
-- [ ] Whether `nearestStormDistance` / `nearestStormBearing` useful for lightning threat lead time
+- [ ] OWM two-state adaptive polling (DORMANT 5 min / ACTIVE 90s) — Phase 2
+- [ ] OWM hourly `pop` interpolation for improved per-minute probability accuracy
 - [ ] Stadia Maps plan upgrade required before go-live — see Licensing section below
 
 ---
 
 ## Implementation Notes
 
-- All `-999` values must be null-guarded before use in logic or display
-- `sleetIntensity` in minutely: use if present, don't depend on it
-- State machines persist state in flow context (disk-backed) to survive restarts
-- HRRR subhourly source freshness: check `flags.sourceTimes.hrrr_subh` to confirm data recency
+- `global.weather_canonical` uses the `default` (disk-backed) context store — survives Node-RED restarts
+- OWM `precipitation` in minutely is mm regardless of `units` parameter — always apply `mm * 0.0393701` conversion
+- Tempest `rain_accumulated` resets at local midnight — `delta < 0` must be guarded in `observed_intensity` calculation
+- CAPE from Open-Meteo is matched to current UTC hour via `new Date().toISOString().slice(0, 13)` prefix match
 
 ---
 
@@ -627,4 +614,4 @@ The free tier is acceptable during development. Before go-live, upgrade to the *
 
 ---
 
-*Last Updated: 2026-04-13*
+*Last Updated: 2026-04-14*

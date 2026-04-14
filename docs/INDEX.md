@@ -28,7 +28,7 @@ These have been discussed and decided. Reference the relevant doc for rationale.
 | Attendee-based camera suppression | `subsystems/CALENDAR_INTEGRATION.md` |
 | Healthchecks.io for external monitoring | `nodered/HEALTH_MONITORING.md` |
 | PostgreSQL on Workflow host (shared: HA Recorder + video pipeline) | `RUNBOOK.md` §3.13 |
-| Pirate Weather API v2 over Weatherbit | `subsystems/WEATHER_FLOW.md` |
+| OWM + Open-Meteo multi-source weather analysis | `subsystems/WEATHER_FLOW.md` |
 
 ---
 
@@ -104,7 +104,7 @@ Domain-specific designs. Each subsystem is fully designed and ready for implemen
 | [`subsystems/GARAGE_DOOR.md`](subsystems/GARAGE_DOOR.md) | ✅ Designed | Konnected GDO blaQ, SSE stream integration, REST commands, MQTT Discovery |
 | [`subsystems/LORA.md`](subsystems/LORA.md) | ✅ Designed | LoRaWAN gateway relay, bin monitoring state machine, mailbox delivery detection |
 | [`subsystems/VIDEO_PIPELINE.md`](subsystems/VIDEO_PIPELINE.md) | ✅ Designed | Three-stage analysis ladder, CPAI triage, Gemini analysis, zone filtering, cooldown/kill switch |
-| [`subsystems/WEATHER_FLOW.md`](subsystems/WEATHER_FLOW.md) | 🔄 Tier 1 + Radar + Station + Analysis Live | NWS forecast + alerts live; radar pipeline live; Tempest station live; Weather Analysis live (PirateWeather minutely, MinuteCast notifications) |
+| [`subsystems/WEATHER_FLOW.md`](subsystems/WEATHER_FLOW.md) | 🔄 Tier 1 + Radar + Station + Analysis Live | NWS forecast + alerts live; radar pipeline live; Tempest station live; Weather Analysis live (OWM minutely + Open-Meteo convective, Tempest ground truth, MinuteCast notifications); Weather Lightning live |
 | [`subsystems/EUFY_LOCKS.md`](subsystems/EUFY_LOCKS.md) | 📋 Planned | eufy-bridge TypeScript service, MQTT integration for Eufy Wi-Fi locks, lock-only scope, secondary account strategy |
 | [`subsystems/LANDROID.md`](subsystems/LANDROID.md) | 📋 Planned | Worx Landroid Vision WR344 — Mosquitto bridge to AWS IoT Core, normalized state, error/rain delay notifications |
 | [`subsystems/ai/ASSIST_PIPELINE.md`](subsystems/ai/ASSIST_PIPELINE.md) | 📋 Planned | HA Assist voice pipeline, two-tier conversation agent, Echo Show experiment, satellite targeting |
@@ -135,7 +135,8 @@ Domain-specific designs. Each subsystem is fully designed and ready for implemen
 - HAOS live: Node-RED, PostgreSQL, all utility flows operational
 - Radar pipeline live: Python daemon on hub, SFTP delivery to HAOS, Node-RED MQTT integration
 - Weather station live: WeatherFlow Tempest via UDP relay, 14 HA entities via MQTT Discovery
-- Weather Analysis live: PirateWeather minutely forecast, 1-minute cadence, MinuteCast notifications, `threat_type` entity state, `minutely` array for dashboard chart, HA Discovery sensor
+- Weather Analysis live: OWM minutely forecast (90s cadence) + Open-Meteo convective instability, Tempest ground truth `minutely[0]` replacement, MinuteCast notifications, `threat_type` entity state, HA Discovery sensor
+- Weather Lightning live: hyperlocal Tempest strike detection, proximity/distance notification tiers, state aging to Clear
 - Weather Alerts enhanced: three-tier deduplication, expiry pre-filter, per-alert notifications, consolidated state topic, Weather Alerts Card on dashboard, HA Discovery sensor
 
 **What's next:**
@@ -143,7 +144,6 @@ Domain-specific designs. Each subsystem is fully designed and ready for implemen
 - Hygrostat: RoC-based bathroom fan, Inovelli Blue LED bar
 - LoRaWAN: bin monitoring, mailbox delivery detection
 - Garage door: Konnected GDO blaQ bridge
-- Weather Lightning: hyperlocal lightning notifications (designed — issue #26)
 - MinuteCast dashboard visualization: apexcharts-card bar chart (designed — issue #30)
 - Remaining subsystems per `AUTOMATION_BACKLOG.md`
 
@@ -176,4 +176,4 @@ New automation ideas → `AUTOMATION_BACKLOG.md`. Don't derail current work; cap
 
 ---
 
-*Last Updated: 2026-04-13*
+*Last Updated: 2026-04-14*
