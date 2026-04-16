@@ -1,0 +1,407 @@
+[
+    {
+        "id": "area-garage",
+        "type": "tab",
+        "label": "Area: Garage",
+        "disabled": false,
+        "info": "",
+        "env": []
+    },
+    {
+        "id": "16fb3f25ccff23ab",
+        "type": "group",
+        "z": "area-garage",
+        "name": "Home Assistant Discovery",
+        "style": {
+            "label": true
+        },
+        "nodes": [
+            "b3540c9dd3bcc69e",
+            "fcc4a16405041973",
+            "f0950e11ce175451"
+        ],
+        "x": 54,
+        "y": 279,
+        "w": 612,
+        "h": 82
+    },
+    {
+        "id": "e05aa055341a7cd0",
+        "type": "group",
+        "z": "area-garage",
+        "name": "Sinks",
+        "style": {
+            "label": true
+        },
+        "nodes": [
+            "0da2352076fc39e3",
+            "a1f38e10cf421267",
+            "8d4f36b4a1801408",
+            "d4c51757a7160e57"
+        ],
+        "x": 54,
+        "y": 159,
+        "w": 812,
+        "h": 82
+    },
+    {
+        "id": "281dbf4b80e5f013",
+        "type": "group",
+        "z": "area-garage",
+        "name": "Command Handler",
+        "style": {
+            "label": true
+        },
+        "nodes": [
+            "f289f3df29c35044",
+            "f4c41e616749970b",
+            "9844bf7f9abc6115",
+            "6068e30e4b9d38c5"
+        ],
+        "x": 54,
+        "y": 39,
+        "w": 852,
+        "h": 82
+    },
+    {
+        "id": "6f73a7295216acc1",
+        "type": "group",
+        "z": "area-garage",
+        "name": "Error Handling",
+        "style": {
+            "label": true
+        },
+        "nodes": [
+            "c108fd4723befb5e",
+            "c8baf2cec854dec2"
+        ],
+        "x": 54,
+        "y": 399,
+        "w": 352,
+        "h": 82
+    },
+    {
+        "id": "b3540c9dd3bcc69e",
+        "type": "inject",
+        "z": "area-garage",
+        "g": "16fb3f25ccff23ab",
+        "name": "On Startup",
+        "props": [
+            {
+                "p": "topic",
+                "vt": "str"
+            },
+            {
+                "p": "payload"
+            }
+        ],
+        "repeat": "",
+        "crontab": "",
+        "once": true,
+        "onceDelay": 0.1,
+        "topic": "",
+        "payload": "{}",
+        "payloadType": "json",
+        "x": 170,
+        "y": 320,
+        "wires": [
+            [
+                "fcc4a16405041973"
+            ]
+        ]
+    },
+    {
+        "id": "fcc4a16405041973",
+        "type": "function",
+        "z": "area-garage",
+        "g": "16fb3f25ccff23ab",
+        "name": "Build Sensors",
+        "func": "const device = { identifiers: ['highland_garage_bay_one'] };\nconst fullDevice = {\n    ...device,\n    name: 'Garage Door Bay One',\n    model: 'GDO blaQ',\n    manufacturer: 'Konnected'\n};\n\nconst configs = [\n    {\n        topic: 'homeassistant/cover/highland_garage_bay_one/door/config',\n        payload: {\n            name: 'Garage Door',\n            unique_id: 'highland_garage_bay_one_door',\n            device_class: 'garage',\n            state_topic: 'highland/state/garage/bay_one/door',\n            command_topic: 'highland/command/garage/bay_one/door',\n            value_template: '{{ value_json.state }}',\n            position_topic: 'highland/state/garage/bay_one/door',\n            position_template: '{{ (value_json.position * 100) | int }}',\n            set_position_topic: 'highland/command/garage/bay_one/door',\n            set_position_template: '{\"action\": \"set_position\", \"position\": {{ position / 100.0 }}}',\n            payload_open: '{\"action\": \"open\"}',\n            payload_close: '{\"action\": \"close\"}',\n            payload_stop: '{\"action\": \"stop\"}',\n            state_open: 'OPEN',\n            state_closed: 'CLOSED',\n            optimistic: false,\n            retain: false,\n            device: fullDevice\n        }\n    },\n    {\n        topic: 'homeassistant/light/highland_garage_bay_one/light/config',\n        payload: {\n            name: 'Garage Light',\n            unique_id: 'highland_garage_bay_one_light',\n            schema: 'json',\n            state_topic: 'highland/state/garage/bay_one/light',\n            command_topic: 'highland/command/garage/bay_one/light',\n            optimistic: false,\n            retain: false,\n            device\n        }\n    },\n    {\n        topic: 'homeassistant/lock/highland_garage_bay_one/remote_lock/config',\n        payload: {\n            name: 'Remote Lock',\n            unique_id: 'highland_garage_bay_one_remote_lock',\n            device_class: 'lock',\n            state_topic: 'highland/state/garage/bay_one/remote_lock',\n            command_topic: 'highland/command/garage/bay_one/remote_lock',\n            value_template: '{{ value_json.state }}',\n            payload_lock: '{\"action\": \"lock\"}',\n            payload_unlock: '{\"action\": \"unlock\"}',\n            state_locked: 'LOCKED',\n            state_unlocked: 'UNLOCKED',\n            optimistic: false,\n            retain: false,\n            device\n        }\n    },\n    {\n        topic: 'homeassistant/binary_sensor/highland_garage_bay_one/obstruction/config',\n        payload: {\n            name: 'Obstruction',\n            unique_id: 'highland_garage_bay_one_obstruction',\n            device_class: 'problem',\n            state_topic: 'highland/state/garage/bay_one/obstruction',\n            value_template: '{{ value_json.state }}',\n            payload_on: 'ON',\n            payload_off: 'OFF',\n            device\n        }\n    },\n    {\n        topic: 'homeassistant/binary_sensor/highland_garage_bay_one/motor/config',\n        payload: {\n            name: 'Motor',\n            unique_id: 'highland_garage_bay_one_motor',\n            state_topic: 'highland/state/garage/bay_one/motor',\n            value_template: '{{ value_json.state }}',\n            payload_on: 'ON',\n            payload_off: 'OFF',\n            device\n        }\n    },\n    {\n        topic: 'homeassistant/sensor/highland_garage_bay_one/openings/config',\n        payload: {\n            name: 'Opening Count',\n            unique_id: 'highland_garage_bay_one_openings',\n            state_topic: 'highland/state/garage/bay_one/openings',\n            value_template: '{{ value_json.count }}',\n            device\n        }\n    }\n];\n\nfor (let i = 0; i < configs.length - 1; i++) {\n    node.send({\n        topic: configs[i].topic,\n        payload: JSON.stringify(configs[i].payload)\n    });\n}\n\nmsg.topic = configs[configs.length - 1].topic;\nmsg.payload = JSON.stringify(configs[configs.length - 1].payload);\nreturn msg;",
+        "outputs": 1,
+        "timeout": 0,
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "libs": [],
+        "x": 380,
+        "y": 320,
+        "wires": [
+            [
+                "f0950e11ce175451"
+            ]
+        ]
+    },
+    {
+        "id": "f0950e11ce175451",
+        "type": "mqtt out",
+        "z": "area-garage",
+        "g": "16fb3f25ccff23ab",
+        "name": "Publish",
+        "topic": "",
+        "qos": "1",
+        "retain": "true",
+        "respTopic": "",
+        "contentType": "",
+        "userProps": "",
+        "correl": "",
+        "expiry": "",
+        "broker": "4cefa2ad2d8b462e",
+        "x": 580,
+        "y": 320,
+        "wires": []
+    },
+    {
+        "id": "0da2352076fc39e3",
+        "type": "inject",
+        "z": "area-garage",
+        "g": "e05aa055341a7cd0",
+        "name": "On Startup",
+        "props": [
+            {
+                "p": "payload"
+            },
+            {
+                "p": "topic",
+                "vt": "str"
+            }
+        ],
+        "repeat": "",
+        "crontab": "",
+        "once": true,
+        "onceDelay": 0.1,
+        "topic": "",
+        "payload": "",
+        "payloadType": "date",
+        "x": 170,
+        "y": 200,
+        "wires": [
+            [
+                "a1f38e10cf421267"
+            ]
+        ]
+    },
+    {
+        "id": "a1f38e10cf421267",
+        "type": "sse-client",
+        "z": "area-garage",
+        "g": "e05aa055341a7cd0",
+        "name": "Bay One SSE",
+        "url": "http://192.168.1.71/events",
+        "events": [],
+        "headers": {
+            "Accept": "text/event-stream"
+        },
+        "proxy": "",
+        "restart": false,
+        "rejectUnauthorized": true,
+        "withCredentials": true,
+        "timeout": 1,
+        "x": 380,
+        "y": 200,
+        "wires": [
+            [
+                "8d4f36b4a1801408"
+            ]
+        ]
+    },
+    {
+        "id": "8d4f36b4a1801408",
+        "type": "function",
+        "z": "area-garage",
+        "g": "e05aa055341a7cd0",
+        "name": "Parse Event",
+        "func": "if (!isValidJSON(msg.payload)) {\n    return null;\n}\n\nmsg.payload = JSON.parse(msg.payload);\n\nconst p = msg.payload;\n\n// Only process known entities\nconst topicMap = {\n    'cover-garage_door':       'highland/state/garage/bay_one/door',\n    'light-garage_light':      'highland/state/garage/bay_one/light',\n    'lock-lock':               'highland/state/garage/bay_one/remote_lock',\n    'binary_sensor-obstruction': 'highland/state/garage/bay_one/obstruction',\n    'binary_sensor-motor':     'highland/state/garage/bay_one/motor',\n    'sensor-garage_openings':  'highland/state/garage/bay_one/openings'\n};\n\nif (!topicMap[p.id]) {\n    return null;\n} \n\n// Track last_direction for Smart Reversing (cover only)\nif (p.id === 'cover-garage_door') {\n    if (p.current_operation === 'OPENING') {\n        flow.set('garage_last_direction', 'OPENING');\n    } else if (p.current_operation === 'CLOSING') {\n        flow.set('garage_last_direction', 'CLOSING');\n    }\n}\n\n// Build state payload\nconst payload = {\n    timestamp: new Date().toISOString(),\n    source: 'garage_bridge',\n    state: p.state\n};\n\n// Add entity-specific fields\nif (p.id === 'cover-garage_door') {\n    payload.current_operation = p.current_operation;\n    payload.position = p.position;\n}\nif (p.id === 'sensor-garage_openings') {\n    payload.count = p.value;\n}\nif (p.id === 'light-garage_light') {\n    payload.color_mode = p.color_mode;\n}\n\nmsg.topic = topicMap[p.id];\nmsg.payload = JSON.stringify(payload);\nmsg.retain = true;\nmsg.qos = 1;\n\nconst formatStatus = global.get('utils.formatStatus', 'initializers') || (t => t);\nnode.status({ fill: 'green', shape: 'dot', text: formatStatus(`${p.id}: ${p.state}`) });\n\nreturn msg;\n\nfunction isValidJSON(str) {\n  if (typeof str !== 'string') return false; // Must be a string to be JSON\n  try {\n    const result = JSON.parse(str);\n    // Optional: Ensure it's an object or array, as numbers/booleans are technically valid JSON\n    return (typeof result === 'object' && result !== null);\n  } catch (e) {\n    return false;\n  }\n}",
+        "outputs": 1,
+        "timeout": 0,
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "libs": [],
+        "x": 590,
+        "y": 200,
+        "wires": [
+            [
+                "d4c51757a7160e57"
+            ]
+        ]
+    },
+    {
+        "id": "d4c51757a7160e57",
+        "type": "mqtt out",
+        "z": "area-garage",
+        "g": "e05aa055341a7cd0",
+        "name": "Publish",
+        "topic": "",
+        "qos": "1",
+        "retain": "true",
+        "respTopic": "",
+        "contentType": "",
+        "userProps": "",
+        "correl": "",
+        "expiry": "",
+        "broker": "4cefa2ad2d8b462e",
+        "x": 780,
+        "y": 200,
+        "wires": []
+    },
+    {
+        "id": "f289f3df29c35044",
+        "type": "mqtt in",
+        "z": "area-garage",
+        "g": "281dbf4b80e5f013",
+        "name": "Garage Bay One",
+        "topic": "highland/command/garage/bay_one/#",
+        "qos": "1",
+        "datatype": "auto-detect",
+        "broker": "4cefa2ad2d8b462e",
+        "nl": false,
+        "rap": true,
+        "rh": 0,
+        "inputs": 0,
+        "x": 160,
+        "y": 80,
+        "wires": [
+            [
+                "f4c41e616749970b"
+            ]
+        ]
+    },
+    {
+        "id": "f4c41e616749970b",
+        "type": "function",
+        "z": "area-garage",
+        "g": "281dbf4b80e5f013",
+        "name": "Route Command",
+        "func": "const payload = typeof msg.payload === 'string'\n    ? JSON.parse(msg.payload)\n    : msg.payload;\n\nconst topic = msg.topic;\nconst action = topic === 'highland/command/garage/bay_one/light'\n    ? (payload.state === 'ON' ? 'turn_on' : 'turn_off')\n    : payload.action;\n\nconst blaqIp = '192.168.1.71';\n\n// Route based on topic and action\nconst routes = {\n    'highland/command/garage/bay_one/door': {\n        'open': `/cover/garage_door/open`,\n        'close': `/cover/garage_door/close`,\n        'stop': `/cover/garage_door/stop`,\n        'toggle': `/cover/garage_door/toggle`,\n        'set_position': `/cover/garage_door/set`\n    },\n    'highland/command/garage/bay_one/light': {\n        'turn_on': `/light/garage_light/turn_on`,\n        'turn_off': `/light/garage_light/turn_off`,\n        'toggle': `/light/garage_light/toggle`\n    },\n    'highland/command/garage/bay_one/remote_lock': {\n        'lock': `/lock/lock/lock`,\n        'unlock': `/lock/lock/unlock`\n    }\n};\n\nconst topicRoutes = routes[topic];\nif (!topicRoutes) {\n    node.warn(`Unknown command topic: ${topic}`);\n    return null;\n}\n\nconst path = topicRoutes[action];\nif (!path) {\n    node.warn(`Unknown action '${action}' for topic ${topic}`);\n    return null;\n}\n\nmsg.url = `http://${blaqIp}${path}`;\nmsg.method = 'POST';\nmsg.payload = '';\n\n// Handle set_position — needs query param\nif (action === 'set_position') {\n    msg.url += `?position=${payload.position}`;\n}\n\nconst formatStatus = global.get('utils.formatStatus', 'initializers') || (t => t);\nnode.status({ fill: 'blue', shape: 'dot', text: formatStatus(`${action} → ${path}`) });\n\nreturn msg;",
+        "outputs": 1,
+        "timeout": 0,
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "libs": [],
+        "x": 390,
+        "y": 80,
+        "wires": [
+            [
+                "9844bf7f9abc6115"
+            ]
+        ]
+    },
+    {
+        "id": "9844bf7f9abc6115",
+        "type": "http request",
+        "z": "area-garage",
+        "g": "281dbf4b80e5f013",
+        "name": "Request",
+        "method": "use",
+        "ret": "txt",
+        "paytoqs": "ignore",
+        "url": "",
+        "tls": "",
+        "persist": false,
+        "proxy": "",
+        "insecureHTTPParser": false,
+        "authType": "",
+        "senderr": false,
+        "headers": [],
+        "x": 600,
+        "y": 80,
+        "wires": [
+            [
+                "6068e30e4b9d38c5"
+            ]
+        ]
+    },
+    {
+        "id": "6068e30e4b9d38c5",
+        "type": "function",
+        "z": "area-garage",
+        "g": "281dbf4b80e5f013",
+        "name": "Log Response",
+        "func": "if (msg.statusCode !== 200) {\n    node.warn(`blaQ command failed: ${msg.statusCode} — ${msg.payload}`);\n}\nconst formatStatus = global.get('utils.formatStatus', 'initializers') || (t => t);\nnode.status({ fill: msg.statusCode === 200 ? 'green' : 'red', shape: 'dot', \n    text: formatStatus(`${msg.statusCode}`) });\nreturn null;",
+        "outputs": 1,
+        "timeout": 0,
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "libs": [],
+        "x": 800,
+        "y": 80,
+        "wires": [
+            []
+        ]
+    },
+    {
+        "id": "c8baf2cec854dec2",
+        "type": "catch",
+        "z": "area-garage",
+        "g": "6f73a7295216acc1",
+        "name": "Catch All",
+        "scope": null,
+        "uncaught": false,
+        "x": 140,
+        "y": 440,
+        "wires": [
+            [
+                "c108fd4723befb5e"
+            ]
+        ]
+    },
+    {
+        "id": "c108fd4723befb5e",
+        "type": "debug",
+        "z": "area-garage",
+        "g": "6f73a7295216acc1",
+        "name": "Output",
+        "active": true,
+        "tosidebar": true,
+        "console": false,
+        "tostatus": false,
+        "complete": "true",
+        "targetType": "full",
+        "statusVal": "",
+        "statusType": "auto",
+        "x": 310,
+        "y": 440,
+        "wires": []
+    },
+    {
+        "id": "4cefa2ad2d8b462e",
+        "type": "mqtt-broker",
+        "name": "Hub",
+        "broker": "hub.local",
+        "port": 1883,
+        "clientid": "",
+        "autoConnect": true,
+        "usetls": false,
+        "protocolVersion": 4,
+        "keepalive": 60,
+        "cleansession": true,
+        "autoUnsubscribe": true,
+        "birthTopic": "",
+        "birthQos": "0",
+        "birthRetain": "false",
+        "birthPayload": "",
+        "birthMsg": {},
+        "closeTopic": "",
+        "closeQos": "0",
+        "closeRetain": "false",
+        "closePayload": "",
+        "closeMsg": {},
+        "willTopic": "",
+        "willQos": "0",
+        "willRetain": "false",
+        "willPayload": "",
+        "willMsg": {},
+        "userProps": "",
+        "sessionExpiry": ""
+    },
+    {
+        "id": "80c3722314ee1c22",
+        "type": "global-config",
+        "env": [],
+        "modules": {
+            "node-red-contrib-sse-client": "0.2.4"
+        }
+    }
+]

@@ -19,33 +19,60 @@ Content-Type: text/event-stream
 
 The blaQ pushes state change events in real time. Node-RED subscribes once at startup and maintains the connection. Reconnection logic handles drops.
 
-**Event types published to the stream:**
+**Event types published to the stream (confirmed):**
 
-| Event | Payload field | Values |
-|-------|--------------|--------|
-| `door` | `state` | `open`, `closed` |
-| `door` | `current_operation` | `idle`, `opening`, `closing` |
-| `light` | `state` | `on`, `off` |
-| `lock` | `state` | `locked`, `unlocked` |
-| `obstruction` | `state` | `on`, `off` |
-| `motion` | `state` | `on`, `off` |
-| `motor` | `state` | `on`, `off` |
-| `openings` | `count` | integer |
-| `learn` | `state` | `on`, `off` |
-| `synced` | `state` | `true`, `false` |
+The SSE stream publishes full ESPHome entity state for every entity on the device as JSON. Each message has the shape:
+```json
+{"name_id": "cover/Garage Door", "id": "cover-garage_door", "value": 0, "state": "CLOSED", "current_operation": "IDLE", "position": 0}
+```
+
+Key confirmed `id` values and their relevant fields:
+
+| `id` | Key fields |
+|------|------------|
+| `cover-garage_door` | `state`, `current_operation`, `position` |
+| `light-garage_light` | `state`, `color_mode` |
+| `lock-lock` | `state` |
+| `binary_sensor-obstruction` | `state` |
+| `binary_sensor-motor` | `state` |
+| `sensor-garage_openings` | `value` (count) |
+
+All other entity messages are filtered and dropped by Parse Event.
 
 ### REST Commands
 
+All commands are HTTP POST with no request body unless otherwise noted.
+
+**Button IDs:** N/A — door commands use cover endpoints directly (see below)
+
+**Cover endpoints:**
 ```
-POST http://{blaq_ip}/button/{button_id}/press
-POST http://{blaq_ip}/switch/{switch_id}/turn_on
-POST http://{blaq_ip}/switch/{switch_id}/turn_off
-POST http://{blaq_ip}/switch/{switch_id}/toggle
+POST http://{blaq_ip}/cover/garage_door/open
+POST http://{blaq_ip}/cover/garage_door/close
+POST http://{blaq_ip}/cover/garage_door/stop
+POST http://{blaq_ip}/cover/garage_door/toggle
+POST http://{blaq_ip}/cover/garage_door/set?position=0.5   (decimal 0.0–1.0)
 ```
 
-**Button IDs:** `door_open`, `door_close`, `door_stop`, `door_toggle`, `light_toggle`
+**Light endpoints:**
+```
+POST http://{blaq_ip}/light/garage_light/turn_on
+POST http://{blaq_ip}/light/garage_light/turn_off
+POST http://{blaq_ip}/light/garage_light/toggle
+```
 
-**Switch IDs:** `remote_lock`, `learn`
+**Lock endpoints:**
+```
+POST http://{blaq_ip}/lock/lock/lock
+POST http://{blaq_ip}/lock/lock/unlock
+```
+
+**Switch IDs:** `learn` only
+```
+POST http://{blaq_ip}/switch/learn/turn_on
+POST http://{blaq_ip}/switch/learn/turn_off
+POST http://{blaq_ip}/switch/learn/toggle
+```
 
 ---
 
@@ -58,17 +85,17 @@ blaQ SSE stream  →  [Node-RED SSE subscriber]
                    Parse SSE event
                           │
                           ▼
-              highland/state/garage/{entity}  ← RETAINED
+              highland/state/garage/bay_one/{entity}  ← RETAINED
                           │
                           ▼
-              highland/event/garage/{event}   (on transitions)
+              highland/event/garage/bay_one/{event}   (on transitions)
                           │
                           ▼
               MQTT Discovery (on startup)     → HA entity registration
 ```
 
 ```
-highland/command/garage/{target}
+highland/command/garage/bay_one/{target}
         │
         ▼
 Command Handler
@@ -79,13 +106,13 @@ POST http://{blaq_ip}/...
 
 ### Flow Groups
 
-**Startup** — On startup inject → Publish MQTT Discovery configs → Subscribe to SSE stream
+**Command Handler** — MQTT in (`highland/command/garage/bay_one/#`) → `Route Command` function → HTTP Request → `Log Response` function
 
-**SSE Sink** — SSE in node → Parse Event → Publish State + Publish Event (on transition)
+**Sinks** — On Startup inject → SSE client (`node-red-contrib-sse-client`) → `Parse Event` function → MQTT out (state topics, retained)
 
-**Command Handler** — MQTT in (`highland/command/garage/#`) → Route Command → HTTP Request (blaQ REST API)
+**Home Assistant Discovery** — On Startup inject → `Build Sensors` function (emits all six Discovery configs) → MQTT out (retained)
 
-**Error Handling** — Flow-wide catch + targeted SSE reconnect logic
+**Error Handling** — Flow-wide catch → debug
 
 ---
 
@@ -95,32 +122,47 @@ POST http://{blaq_ip}/...
 
 | Topic | State values |
 |-------|-------------|
-| `highland/state/garage/door` | `OPEN` \| `CLOSED` + `current_operation`: `IDLE` \| `OPENING` \| `CLOSING` |
-| `highland/state/garage/light` | `ON` \| `OFF` |
-| `highland/state/garage/remote_lock` | `LOCKED` \| `UNLOCKED` |
-| `highland/state/garage/obstruction` | `ON` \| `OFF` |
-| `highland/state/garage/motion` | `ON` \| `OFF` |
-| `highland/state/garage/motor` | `ON` \| `OFF` |
-| `highland/state/garage/synced` | `true` \| `false` |
-| `highland/state/garage/learn` | `ON` \| `OFF` |
-| `highland/state/garage/openings` | `{ count: integer }` |
+| `highland/state/garage/bay_one/door` | `OPEN` \| `CLOSED` + `current_operation`: `IDLE` \| `OPENING` \| `CLOSING` + `position`: 0.0–1.0 (decimal) |
+| `highland/state/garage/bay_one/light` | `ON` \| `OFF` + `color_mode`: `onoff` |
+| `highland/state/garage/bay_one/remote_lock` | `LOCKED` \| `UNLOCKED` |
+| `highland/state/garage/bay_one/obstruction` | `ON` \| `OFF` |
+| `highland/state/garage/bay_one/motion` | `ON` \| `OFF` |
+| `highland/state/garage/bay_one/motor` | `ON` \| `OFF` |
+| `highland/state/garage/bay_one/synced` | `true` \| `false` |
+| `highland/state/garage/bay_one/learn` | `ON` \| `OFF` |
+| `highland/state/garage/bay_one/openings` | `{ count: integer }` |
 
 All state payloads: `{ "timestamp": "...", "source": "garage_bridge", "state": "..." }`
 
+> **Confirmed from blaQ SSE stream:** `position` is a decimal 0.0–1.0 (not 0–100). `state` remains `OPEN` during both opening and closing — direction is determined by `current_operation`. Mid-travel detection: `position > 0 && position < 1`.
+
+**Confirmed cover entity states:**
+
+| `state` | `current_operation` | `position` | Meaning |
+|---------|-------------------|-----------|----------|
+| `CLOSED` | `IDLE` | `0` | Fully closed |
+| `OPEN` | `IDLE` | `1` | Fully open |
+| `OPEN` | `OPENING` | `0–1` | Mid-travel, opening |
+| `OPEN` | `CLOSING` | `0–1` | Mid-travel, closing |
+| `OPEN` | `IDLE` | `0–1` | Mid-travel, stopped |
+
+**SSE filter key:** `id === 'cover-garage_door'`
+
 ### Event Topics (Not Retained)
 
-`highland/event/garage/door_opened` | `door_closed` | `obstruction_detected` | `obstruction_cleared` | `motion_detected`
+`highland/event/garage/bay_one/door_opened` | `door_closed` | `obstruction_detected` | `obstruction_cleared` | `motion_detected`
 
 All carry minimal envelope: `{ "timestamp": "...", "source": "garage_bridge" }`
 
 ### Command Topics
 
-| Topic | `action` values |
+Door, lock, and remote_lock commands use `{"action": "..."}` payload format. Light commands use HA MQTT JSON schema format `{"state": "ON"}` / `{"state": "OFF"}`.
+
+| Topic | Payload format |
 |-------|----------------|
-| `highland/command/garage/door` | `"open"` \| `"close"` \| `"stop"` \| `"toggle"` |
-| `highland/command/garage/light` | `"turn_on"` \| `"turn_off"` \| `"toggle"` |
-| `highland/command/garage/remote_lock` | `"lock"` \| `"unlock"` |
-| `highland/command/garage/learn` | `"turn_on"` \| `"turn_off"` \| `"toggle"` |
+| `highland/command/garage/bay_one/door` | `{"action": "open" \| "close" \| "stop" \| "toggle" \| "set_position", "position": 0.0–1.0}` |
+| `highland/command/garage/bay_one/light` | `{"state": "ON" \| "OFF"}` (HA MQTT JSON schema) |
+| `highland/command/garage/bay_one/remote_lock` | `{"action": "lock" \| "unlock"}` |
 
 ---
 
@@ -128,16 +170,63 @@ All carry minimal envelope: `{ "timestamp": "...", "source": "garage_bridge" }`
 
 Node-RED publishes MQTT Discovery configs on startup (retained, idempotent). HA auto-creates these entities and they survive HA restarts with no manual config.
 
-| Entity | Type | Notes |
-|--------|------|-------|
-| Garage Door | `cover` | `open`/`close`/`stop` commands via `highland/command/garage/door` |
-| Garage Light | `light` | on/off |
-| Remote Lock | `lock` | locked/unlocked |
-| Obstruction | `binary_sensor` | `device_class: problem` |
-| Motion | `binary_sensor` | `device_class: motion` |
-| Motor | `binary_sensor` | |
-| Opening Count | `sensor` | Lifetime open count |
-| Synced | `binary_sensor` | blaQ/opener sync state |
+| Entity | Type | HA Entity ID | Notes |
+|--------|------|-------------|-------|
+| Garage Door | `cover` | `cover.garage_bay_one` | `open`/`close`/`stop` commands |
+| Garage Light | `light` | `light.garage_bay_one` | JSON schema, on/off + color_mode |
+| Remote Lock | `lock` | `lock.garage_bay_one` | locked/unlocked |
+| Obstruction | `binary_sensor` | `binary_sensor.garage_bay_one_obstruction` | `device_class: problem` |
+| Motor | `binary_sensor` | `binary_sensor.garage_bay_one_motor` | |
+| Opening Count | `sensor` | `sensor.garage_bay_one_openings` | Lifetime open count |
+
+> **Note:** Motion and Synced entities were omitted from the Discovery config — Motion requires the optional motion-sensing wall button accessory; Synced is an internal diagnostic state not useful for normal operation.
+
+---
+
+## Smart Reversing (ZEN37 Wall Remote)
+
+The Zooz ZEN37 is a 4-button Z-Wave wall remote (2 large, 2 small buttons) mounted in the garage. It provides a physical toggle for the garage door that requires intelligent direction-awareness — a simple toggle command to the blaQ would be ambiguous mid-travel.
+
+### Button Mapping
+
+| Button | Action | Function |
+|--------|--------|----------|
+| Large button 1 | Press | Bay 1 door — Smart Reversing toggle |
+| Small button 1 | Press | Bay 1 light — toggle |
+| Large button 2 | Press | Bay 2 door — reserved (future) |
+| Small button 2 | Press | Bay 2 light — reserved (future) |
+
+### State Machine
+
+The bridge tracks `last_direction` in flow context:
+
+| Value | Meaning |
+|-------|---------|
+| `OPENING` | Door was last observed moving upward |
+| `CLOSING` | Door was last observed moving downward |
+| `UNKNOWN` | Default on startup before first SSE update |
+
+`last_direction` is updated on every SSE event where `current_operation` transitions to `OPENING` or `CLOSING`. It updates continuously through reversals — no special reset needed.
+
+**Decision logic on ZEN37 bay 1 large button press:**
+
+| Door state | `current_operation` | `last_direction` | Action |
+|------------|-------------------|-----------------|--------|
+| `CLOSED` | `IDLE` | any | `open` |
+| `OPEN` | `IDLE` | any | `close` |
+| any | `OPENING` or `CLOSING` | any | `stop` |
+| mid-travel | `IDLE` | `OPENING` | `close` |
+| mid-travel | `IDLE` | `CLOSING` | `open` |
+| mid-travel | `IDLE` | `UNKNOWN` | `close` ← fail-safe |
+
+**Fail-safe rationale:** When `last_direction` is unknown (flow just restarted and door is already mid-travel), the bridge defaults to closing. An open or partially-open door is the higher-risk state; closing is the safer assumption.
+
+**Mid-travel detection:** `position > 0 && position < 1` (position is a decimal 0.0–1.0 confirmed from blaQ SSE stream).
+
+### Command Path Distinction
+
+- **ZEN37** → Smart Reversing logic → blaQ REST API (toggle semantics, direction-aware)
+- **HA UI / Node-RED command** → `highland/command/garage/bay_one/door` → blaQ REST API directly (explicit directional commands, no reversing logic needed)
 
 ---
 
@@ -153,17 +242,19 @@ The SSE connection to the blaQ is long-lived. The bridge implements reconnection
 
 ## blaQ Configuration Notes
 
-- blaQ must be configured with a **static IP** (or DHCP reservation) — the bridge stores the IP in `device_registry.json` or `secrets.json`
+- blaQ IP is hardcoded in the `Route Command` function node — externalise to config when a suitable home for non-Zigbee/Z-Wave device IPs is established
 - Local API must be enabled (default on blaQ)
-- The blaQ's native HA ESPHome integration should be **disabled** if the bridge is active — dual control creates state conflicts
+- The blaQ's native HA ESPHome integration must be **disabled** when the bridge is active — dual control creates state conflicts
 
 ---
 
 ## Open Questions
 
-- [ ] Confirm blaQ firmware version and whether SSE event field names are stable across updates
-- [ ] Determine whether `cover` entity type in MQTT Discovery correctly supports `stop` command or requires a separate button entity
+- [x] Confirm blaQ firmware version and whether SSE event field names are stable across updates — SSE stream confirmed, field names stable on current firmware
+- [x] Determine whether `cover` entity type in MQTT Discovery correctly supports `stop` command — confirmed working
+- [ ] Confirm Z-Wave JS UI topic format for ZEN37 scene/button events at implementation time
+- [ ] Externalise blaQ IP address when config home for non-Zigbee/Z-Wave devices is established
 
 ---
 
-*Last Updated: 2026-03-26*
+*Last Updated: 2026-04-16*
