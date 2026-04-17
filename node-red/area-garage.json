@@ -37,11 +37,12 @@
             "0da2352076fc39e3",
             "a1f38e10cf421267",
             "8d4f36b4a1801408",
-            "d4c51757a7160e57"
+            "d4c51757a7160e57",
+            "0b88344bcc75a657"
         ],
         "x": 54,
         "y": 339,
-        "w": 812,
+        "w": 1012,
         "h": 82
     },
     {
@@ -199,7 +200,7 @@
         "y": 380,
         "wires": [
             [
-                "a1f38e10cf421267"
+                "0b88344bcc75a657"
             ]
         ]
     },
@@ -209,7 +210,7 @@
         "z": "area-garage",
         "g": "e05aa055341a7cd0",
         "name": "Bay One SSE",
-        "url": "http://192.168.1.71/events",
+        "url": "",
         "events": [],
         "headers": {
             "Accept": "text/event-stream"
@@ -219,7 +220,7 @@
         "rejectUnauthorized": true,
         "withCredentials": true,
         "timeout": 1,
-        "x": 380,
+        "x": 580,
         "y": 380,
         "wires": [
             [
@@ -240,7 +241,7 @@
         "initialize": "",
         "finalize": "",
         "libs": [],
-        "x": 590,
+        "x": 790,
         "y": 380,
         "wires": [
             [
@@ -263,7 +264,7 @@
         "correl": "",
         "expiry": "",
         "broker": "4cefa2ad2d8b462e",
-        "x": 780,
+        "x": 980,
         "y": 380,
         "wires": []
     },
@@ -295,7 +296,7 @@
         "z": "area-garage",
         "g": "281dbf4b80e5f013",
         "name": "Route Command",
-        "func": "const payload = typeof msg.payload === 'string'\n    ? JSON.parse(msg.payload)\n    : msg.payload;\n\nconst topic = msg.topic;\nconst action = topic === 'highland/command/garage/bay_one/light'\n    ? (payload.state === 'ON' ? 'turn_on' : 'turn_off')\n    : payload.action;\n\nconst blaqIp = '192.168.1.71';\n\n// Route based on topic and action\nconst routes = {\n    'highland/command/garage/bay_one/door': {\n        'open': `/cover/garage_door/open`,\n        'close': `/cover/garage_door/close`,\n        'stop': `/cover/garage_door/stop`,\n        'toggle': `/cover/garage_door/toggle`,\n        'set_position': `/cover/garage_door/set`\n    },\n    'highland/command/garage/bay_one/light': {\n        'turn_on': `/light/garage_light/turn_on`,\n        'turn_off': `/light/garage_light/turn_off`,\n        'toggle': `/light/garage_light/toggle`\n    },\n    'highland/command/garage/bay_one/remote_lock': {\n        'lock': `/lock/lock/lock`,\n        'unlock': `/lock/lock/unlock`\n    }\n};\n\nconst topicRoutes = routes[topic];\nif (!topicRoutes) {\n    node.warn(`Unknown command topic: ${topic}`);\n    return null;\n}\n\nconst path = topicRoutes[action];\nif (!path) {\n    node.warn(`Unknown action '${action}' for topic ${topic}`);\n    return null;\n}\n\nmsg.url = `http://${blaqIp}${path}`;\nmsg.method = 'POST';\nmsg.payload = '';\n\n// Handle set_position — needs query param\nif (action === 'set_position') {\n    msg.url += `?position=${payload.position}`;\n}\n\nconst formatStatus = global.get('utils.formatStatus', 'initializers') || (t => t);\nnode.status({ fill: 'blue', shape: 'dot', text: formatStatus(`${action} → ${path}`) });\n\nreturn msg;",
+        "func": "const payload = typeof msg.payload === 'string'\n    ? JSON.parse(msg.payload)\n    : msg.payload;\n\nconst topic = msg.topic;\nconst action = topic === 'highland/command/garage/bay_one/light'\n    ? (payload.state === 'ON' ? 'turn_on' : 'turn_off')\n    : payload.action;\n\nconst blaqIp = global.get('config')?.infrastructure?.devices.garage_bay_one_opener?.host;\n\n// Route based on topic and action\nconst routes = {\n    'highland/command/garage/bay_one/door': {\n        'open': `/cover/garage_door/open`,\n        'close': `/cover/garage_door/close`,\n        'stop': `/cover/garage_door/stop`,\n        'toggle': `/cover/garage_door/toggle`,\n        'set_position': `/cover/garage_door/set`\n    },\n    'highland/command/garage/bay_one/light': {\n        'turn_on': `/light/garage_light/turn_on`,\n        'turn_off': `/light/garage_light/turn_off`,\n        'toggle': `/light/garage_light/toggle`\n    },\n    'highland/command/garage/bay_one/remote_lock': {\n        'lock': `/lock/lock/lock`,\n        'unlock': `/lock/lock/unlock`\n    }\n};\n\nconst topicRoutes = routes[topic];\nif (!topicRoutes) {\n    node.warn(`Unknown command topic: ${topic}`);\n    return null;\n}\n\nconst path = topicRoutes[action];\nif (!path) {\n    node.warn(`Unknown action '${action}' for topic ${topic}`);\n    return null;\n}\n\nmsg.url = `http://${blaqIp}${path}`;\nmsg.method = 'POST';\nmsg.payload = '';\n\n// Handle set_position — needs query param\nif (action === 'set_position') {\n    msg.url += `?position=${payload.position}`;\n}\n\nconst formatStatus = global.get('utils.formatStatus', 'initializers') || (t => t);\nnode.status({ fill: 'blue', shape: 'dot', text: formatStatus(`${action} → ${path}`) });\n\nreturn msg;",
         "outputs": 1,
         "timeout": 0,
         "noerr": 0,
@@ -555,6 +556,27 @@
         ]
     },
     {
+        "id": "0b88344bcc75a657",
+        "type": "function",
+        "z": "area-garage",
+        "g": "e05aa055341a7cd0",
+        "name": "Build Url",
+        "func": "const devices = global.get('config')?.infrastructure?.devices;\n\nif (!devices.garage_bay_one_opener) {\n    throw new Error('Unable to locate device configuration: garage_bay_one_opener');\n}\n\nmsg.url = `http://${devices.garage_bay_one_opener.host}/events`\n\nreturn msg;",
+        "outputs": 1,
+        "timeout": 0,
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "libs": [],
+        "x": 360,
+        "y": 380,
+        "wires": [
+            [
+                "a1f38e10cf421267"
+            ]
+        ]
+    },
+    {
         "id": "4cefa2ad2d8b462e",
         "type": "mqtt-broker",
         "name": "Hub",
@@ -586,7 +608,7 @@
         "sessionExpiry": ""
     },
     {
-        "id": "769c815ce97c98ac",
+        "id": "ab1d977b3289ce9b",
         "type": "global-config",
         "env": [],
         "modules": {

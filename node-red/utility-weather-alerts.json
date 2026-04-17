@@ -167,7 +167,7 @@
         "z": "utility-weather-alerts",
         "g": "806e9ecc0ebe893f",
         "name": "Build Request",
-        "func": "const location = global.get('config')?.location;\nconst lat = location?.latitude;\nconst lon = location?.longitude;\n\nmsg.url = `https://api.weather.gov/alerts/active?point=${lat},${lon}`;\n\nmsg.headers = { \n    'Accept': 'application/geo+json',\n    'User-Agent': global.get('config')?.system?.http?.user_agent\n};\n\nmsg.payload = '';\nreturn msg;",
+        "func": "const location = global.get('config')?.location;\nconst lat = location?.latitude;\nconst lon = location?.longitude;\n\nmsg.url = `https://api.weather.gov/alerts/active?point=${lat},${lon}`;\n\nmsg.headers = { \n    'Accept': 'application/geo+json',\n    'User-Agent': global.get('config')?.infrastructure?.http?.user_agent\n};\n\nmsg.payload = '';\nreturn msg;",
         "outputs": 1,
         "timeout": 0,
         "noerr": 0,

@@ -1,0 +1,11 @@
+{
+  "http": {
+    "user_agent": "(Highland-SmartHome, highland@ferris.network)"
+  },
+  "devices": {
+    "garage_bay_one_opener": {
+      "host": "192.168.1.71",
+      "port": 80
+    }
+  }
+}

@@ -102,7 +102,7 @@
         "z": "utility-weather-forecasts",
         "g": "034e6d7039aec520",
         "name": "Build Points Request",
-        "func": "const location = global.get('config')?.location;\nconst userAgent = global.get('config')?.system?.http?.user_agent;\n\nmsg.url = `https://api.weather.gov/points/${location.latitude},${location.longitude}`;\nmsg.headers = {\n    'Accept': 'application/geo+json',\n    'User-Agent': userAgent\n};\nmsg.payload = '';\n\nreturn msg;",
+        "func": "const location = global.get('config')?.location;\nconst userAgent = global.get('config')?.infrastructure?.http?.user_agent;\n\nmsg.url = `https://api.weather.gov/points/${location.latitude},${location.longitude}`;\nmsg.headers = {\n    'Accept': 'application/geo+json',\n    'User-Agent': userAgent\n};\nmsg.payload = '';\n\nreturn msg;",
         "outputs": 1,
         "timeout": 0,
         "noerr": 0,
@@ -232,7 +232,7 @@
         "z": "utility-weather-forecasts",
         "g": "e481f8752dd3b33c",
         "name": "Build Forecast Request",
-        "func": "const forecastUrl = flow.get('forecast_url');\nconst userAgent = global.get('config')?.system?.http?.user_agent;\n\nif (!forecastUrl) {\n    node.status({ fill: 'yellow', shape: 'ring', text: 'Waiting for forecast URL...' });\n    return null;\n}\n\nmsg.url = forecastUrl;\nmsg.headers = {\n    'Accept': 'application/geo+json',\n    'User-Agent': userAgent\n};\nmsg.payload = '';\nreturn msg;",
+        "func": "const forecastUrl = flow.get('forecast_url');\nconst userAgent = global.get('config')?.infrastucture?.http?.user_agent;\n\nif (!forecastUrl) {\n    node.status({ fill: 'yellow', shape: 'ring', text: 'Waiting for forecast URL...' });\n    return null;\n}\n\nmsg.url = forecastUrl;\nmsg.headers = {\n    'Accept': 'application/geo+json',\n    'User-Agent': userAgent\n};\nmsg.payload = '';\nreturn msg;",
         "outputs": 1,
         "timeout": 0,
         "noerr": 0,
@@ -434,7 +434,7 @@
         "sessionExpiry": ""
     },
     {
-        "id": "20e03313b1ec8d8e",
+        "id": "30736e92578ee58a",
         "type": "global-config",
         "env": [],
         "modules": {
