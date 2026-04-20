@@ -108,6 +108,7 @@ Domain-specific designs. Each subsystem is fully designed and ready for implemen
 | [`subsystems/WEATHER_FLOW.md`](subsystems/WEATHER_FLOW.md) | 🔄 Tier 1 + Radar + Station + Analysis Live | NWS forecast + alerts live; radar pipeline live; Tempest station live; Weather Analysis live (OWM minutely + Open-Meteo convective, Tempest ground truth, MinuteCast notifications); Weather Lightning live |
 | [`subsystems/EUFY_LOCKS.md`](subsystems/EUFY_LOCKS.md) | 📋 Planned | eufy-bridge TypeScript service, MQTT integration for Eufy Wi-Fi locks, lock-only scope, secondary account strategy |
 | [`subsystems/LANDROID.md`](subsystems/LANDROID.md) | 📋 Planned | Worx Landroid Vision WR344 — Mosquitto bridge to AWS IoT Core, normalized state, error/rain delay notifications |
+| [`subsystems/MATTER.md`](subsystems/MATTER.md) | 📋 Planned | `matter.js`-based bridge service, dedicated PoE Thread Border Router, `matter/#` private topic surface translated to `highland/#`, triggered by specific device need |
 | [`subsystems/ai/ASSIST_PIPELINE.md`](subsystems/ai/ASSIST_PIPELINE.md) | 📋 Planned | HA Assist voice pipeline, two-tier conversation agent, Echo Show experiment, satellite targeting |
 | [`subsystems/ai/PERSISTENT_MEMORY.md`](subsystems/ai/PERSISTENT_MEMORY.md) | ⏸ Blocked | AI memory architecture — blocked on hardware and HA pipeline event access |
 
@@ -177,4 +178,4 @@ New automation ideas → `AUTOMATION_BACKLOG.md`. Don't derail current work; cap
 
 ---
 
-*Last Updated: 2026-04-21*
+*Last Updated: 2026-04-20*
