@@ -1462,7 +1462,11 @@ HA audit payload (last backup older than 26 hours):
 |---------|----------|
 | `highland/state/#` | All retained operational state |
 | `highland/state/weather/#` | All weather state |
-| `highland/state/driveway/#` | Both bin states |
+| `highland/state/driveway/#` | All driveway physical sensor state (bins, mailbox) |
+| `highland/state/driveway/mailbox` | Mailbox sensor telemetry (door state, battery, env, signal) |
+| `highland/event/driveway/mailbox/opened` | Mailbox door opened |
+| `highland/state/deliveries/mail` | Letter-mail delivery state (Informed Delivery baseline) |
+| `highland/event/deliveries/#` | All delivery events (digest received, letter delivered, exceptions) |
 | `highland/state/garage/#` | All garage state |
 | `highland/state/appliance/#` | All appliance cycle state |
 | `highland/event/weather/station/#` | All weather station events |
@@ -1509,4 +1513,4 @@ HA audit payload (last backup older than 26 hours):
 
 ---
 
-*Last Updated: 2026-04-20*
+*Last Updated: 2026-04-21*

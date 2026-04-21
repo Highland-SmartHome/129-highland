@@ -134,13 +134,15 @@ Pickup schedule stored in household Google Calendar. `trash_day` boolean unlocks
 
 ---
 
-## Use Case 2: Mailbox Delivery Detection
+## Use Case 2: Mailbox Activity Sensor
 
 ### Problem
 
-Mailbox is ~275ft from the house at the end of the driveway with no line of sight. Three mailboxes share one post. Goals: "Has mail been delivered?" and "Have I retrieved it?"
+Mailbox is ~275ft from the house at the end of the driveway with no line of sight. Three mailboxes share one post.
 
-A single reed switch cannot distinguish delivery from retrieval from an ad stuffer — all interactions are brief. Detection is delegated to USPS Informed Delivery, with the door sensor serving purely as an activity signal.
+The physical sensor's job is simple: report when the mailbox door opens. That's it. A single reed switch cannot, on its own, distinguish delivery from retrieval from an ad stuffer — all interactions look the same at the sensor. Classification of those events into meaningful delivery state (mail expected, delivered, retrieved) belongs in `Utility: Deliveries`, which fuses door-open events with USPS Informed Delivery email signals.
+
+See `subsystems/DELIVERIES.md` for the delivery state machine, email parsing, and authoritative mail state. This subsystem's responsibility ends at "the door opened at time T."
 
 ### Sensor Hardware
 
@@ -154,84 +156,34 @@ A single reed switch cannot distinguish delivery from retrieval from an ad stuff
 
 **Rationale for split mount:** Metal mailbox enclosures attenuate RF and experience extreme temperature swings. Keeping the radio outside avoids both problems.
 
-### Delivery Detection — USPS Informed Delivery
-
-USPS Informed Delivery sends **two emails** each mail day:
-
-| Email | Timing | Content |
-|-------|--------|---------|
-| Morning advisory | ~6am | Preview of mail expected that day |
-| Delivery confirmation | Shortly after physical delivery | Confirms mail placed in box |
-
-The delivery confirmation email is the load-bearing signal. Real-world lag for this address is TBD — must be calibrated from observed data.
-
-### Mailbox State Machine
-
-```
-IDLE
-  │
-  ├─── Morning advisory email arrives ──────────────────────────────────┐
-  │                                                                     │
-  │ Door event fires                                                    │
-  ▼                                                                     ▼
-UNCLASSIFIED                                               ADVISORY_RECEIVED
-  │                                                                     │
-  │ Delivery confirmation email arrives                                 │ Delivery confirmation email arrives
-  ▼                                                                     │
-MAIL_WAITING ◄───────────────────────────────────────────────────────── ┘
-  │
-  │ Door event
-  ▼
-RETRIEVED → IDLE
-
-(No confirmation by midnight → DELIVERY_EXCEPTION)
-(Confirmation eventually arrives → MAIL_WAITING)
-```
-
-**Key design points:**
-
-- The delivery confirmation email is the load-bearing signal — when it arrives, it resolves the current state to `MAIL_WAITING` regardless of what preceded it
-- **Lag window** (`delivery_email_lag_window_minutes`): if a door event occurred within this window before the confirmation email arrived, it's treated as the delivery event itself
-- **Midnight rollover** triggers the `DELIVERY_EXCEPTION` check: if state is still `ADVISORY_RECEIVED` at midnight, no confirmation came that calendar day
-- `DELIVERY_EXCEPTION` is not terminal — a delayed confirmation resolves it normally
-- The morning advisory is explicitly **not** load-bearing for delivery detection
-
-### Configuration (thresholds.json)
-
-```json
-"mailbox": {
-  "delivery_email_lag_window_minutes": 30,
-  "mail_waiting_reminder_time": "18:00",
-  "processed_email_retention_days": 14
-}
-```
-
-`delivery_email_lag_window_minutes` must be calibrated from real-world data.
-
-### Email Management
-
-IMAP poller in Node-RED (`node-red-node-email`) polls the household IMAP server. After processing, emails are **moved to a folder** (`Highland/Mailbox` or similar) rather than deleted — provides an audit trail for debugging edge cases. Processed emails older than 14 days are purged.
-
-**Why move, not delete:** The 36-hour delivery gap scenario demonstrates that an email parsed one day may be relevant the next. Deleting on parse would have removed the advisory before the confirmation arrived.
-
 ### MQTT Topics
 
-**State (retained):** `highland/state/mailbox/delivery`
+Published by the `Area: Driveway` flow after the gateway relay reshapes the raw LoRa uplink into the `highland/` namespace. Raw physical signals only — no interpretation.
+
+**State (retained):** `highland/state/driveway/mailbox`
 
 ```json
 {
   "timestamp": "...",
   "source": "lora_mailbox",
-  "state": "MAIL_WAITING",
-  "last_door_event": "...",
-  "advisory_received_at": "...",
-  "confirmation_received_at": "..."
+  "door_state": "closed",
+  "battery_pct": 96,
+  "temperature_c": 12.4,
+  "humidity_pct": 58,
+  "rssi": -102,
+  "snr": -3.1
 }
 ```
 
-`state` values: `"IDLE"` | `"UNCLASSIFIED"` | `"ADVISORY_RECEIVED"` | `"MAIL_WAITING"` | `"DELIVERY_EXCEPTION"` | `"RETRIEVED"`
+`door_state` values: `"open"` | `"closed"`.
 
-**Events (not retained):** `highland/event/mailbox/door_activity` | `mail_expected` | `mail_delivered` | `mail_retrieved` | `delivery_exception`
+**Events (not retained):** `highland/event/driveway/mailbox/opened`
+
+```json
+{ "timestamp": "...", "source": "lora_mailbox" }
+```
+
+Primary consumer: `Utility: Deliveries` (see `subsystems/DELIVERIES.md`). The battery field is also consumed by `Utility: Battery Monitor`.
 
 ---
 
@@ -260,10 +212,8 @@ IMAP poller in Node-RED (`node-red-node-email`) polls the household IMAP server.
 
 **Mailbox**
 - [ ] Physical installation — sensor body mount point, cable routing, magnet placement
-- [ ] IMAP polling interval and email parsing approach
-- [ ] Real-world delivery email lag — calibrate from observed data
-- [ ] IMAP folder name for processed emails
+- [ ] Confirm door-state polarity in payload (open/closed mapping on this specific hardware) once installed
 
 ---
 
-*Last Updated: 2026-03-26*
+*Last Updated: 2026-04-21*
