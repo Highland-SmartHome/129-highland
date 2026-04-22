@@ -54,9 +54,11 @@ Critical points:
 
 ### Ingress Contract
 
-This flow subscribes to `highland/event/email/informed_delivery/received` and receives payloads in the standard shape defined in `subsystems/EMAIL_INGRESS.md § Payload Schema`. For every successfully processed (or deliberately rejected) message, this flow publishes `highland/ack/email` with the matching `message_id`.
+This flow subscribes to `highland/event/email/deliveries/+/received` — a wildcard match for all sources under the `Highland/Deliveries/` Gmail label namespace. Payloads arrive in the standard shape defined in `subsystems/EMAIL_INGRESS.md § Payload Schema`. For every successfully processed (or deliberately rejected) message, this flow publishes `highland/ack/email` with the matching `message_id`.
 
-The Gmail filter that labels incoming Informed Delivery mail is manually configured in Gmail, not defined in this flow. Gmail filter setup is part of the Ingress operational runbook.
+Per the label convention in `EMAIL_INGRESS.md`, Gmail labels under `Highland/Deliveries/` identify the email's source (carrier/service), not the product name. For Phase 1, the only active source is `Highland/Deliveries/USPS`, which captures USPS Informed Delivery emails and any future USPS-originated automation mail.
+
+The Gmail filters that route incoming mail to the appropriate label are manually configured in Gmail, not defined in this flow. Gmail filter setup is part of the Ingress operational runbook.
 
 ### State Machine
 
@@ -131,35 +133,28 @@ MAIL_EXPECTED ──── Midnight rollover w/o delivery ────► DELIVE
 Per `nodered/OVERVIEW.md` conventions: groups are the primary organizing unit; link nodes connect groups; no node has more than two outputs.
 
 **Group 1 — Ingress Subscription**
-- MQTT In on `highland/event/email/informed_delivery/received`
-- Route by subject pattern / sender confirmation → Daily Digest parser / Delivery Confirmation parser
-- On unknown subject pattern: publish `highland/ack/email` with `status: "rejected"` and log
+- MQTT In on `highland/event/email/deliveries/+/received`
+- Route by source (extracted from topic or `label` field) → USPS parser pipeline (Phase 1); FedEx / UPS / Amazon parsers (future phases)
+- On unrecognized source: publish `highland/ack/email` with `status: "rejected"` and log
 
-**Group 2 — Digest Parser**
-- Extract piece count (image count heuristic)
-- Detect "no mail scheduled" text variant
-- Mutate flow context with digest data
-- On success: publish `highland/ack/email` with `status: "ok"`
-- On parse failure: publish `highland/ack/email` with `status: "parse_error"`
-- Link-out to State Machine on state change
+**Group 2 — USPS Parser (Phase 1)**
+- Sub-route by subject pattern → Daily Digest path / Delivery Confirmation path
+- Daily Digest: extract piece count (image count heuristic), detect "no mail scheduled" variant, mutate flow context
+- Delivery Confirmation: confirm sender + subject shape, timestamp the confirmation
+- On parser success: publish `highland/ack/email` with `status: "ok"` and link-out to State Machine
+- On parser failure: publish `highland/ack/email` with `status: "parse_error"`
 
-**Group 3 — Delivery Confirmation Parser**
-- Confirm sender + subject shape
-- Timestamp the confirmation
-- On success: publish `highland/ack/email` with `status: "ok"` and link-out to State Machine
-- On parse failure: publish `highland/ack/email` with `status: "parse_error"`
-
-**Group 4 — State Machine**
+**Group 3 — State Machine**
 - Single transition engine; reads flow context, applies rules, emits new state
 - Publishes retained `highland/state/deliveries/mail` on any transition
 - Publishes corresponding event topics
 
-**Group 5 — Scheduler Hooks**
+**Group 4 — Scheduler Hooks**
 - Midnight reset (via `Utility: Scheduling` period transition or CronPlus)
 - Digest cutoff check (default 10am — if no digest, transition `UNKNOWN → NO_MAIL_SCHEDULED`)
 - Midnight exception check (if `MAIL_EXPECTED`, transition to `DELIVERY_EXCEPTION`)
 
-**Group 6 — HA Discovery**
+**Group 5 — HA Discovery**
 - Sensor: `sensor.mail_status` (string — current state)
 - Sensor: `sensor.mail_expected_pieces` (int)
 - Sensor: `sensor.mail_last_digest_received` (timestamp)

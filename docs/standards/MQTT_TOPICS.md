@@ -1061,17 +1061,17 @@ Phase 3 extends with `"MAIL_RETRIEVED"` when LoRa mailbox sensor lands.
 
 ### Email Ingress
 
-**Architecture:** `Utility: Email Ingress` is the single owner of IMAP polling against the household Gmail account. Normalizes incoming mail and publishes per-label events for consumption by domain flows. See `subsystems/EMAIL_INGRESS.md`.
+**Architecture:** `Utility: Email Ingress` is the single owner of IMAP polling against the household Gmail account. IDLE-watches `[Gmail]/All Mail`, filters new mail by `X-GM-LABELS` for `Highland/*` user labels, normalizes, and publishes per-label events for consumption by domain flows. Gmail label hierarchy is preserved as MQTT topic hierarchy. See `subsystems/EMAIL_INGRESS.md`.
 
-**`highland/event/email/<label>/received`** — New email received on a configured label. Non-retained.
+**`highland/event/email/<namespace>/<source>/received`** — New email received on a Highland label. Non-retained.
 
-`<label>` values currently in use: `informed_delivery`. Additional labels added as consumers come online.
+The topic is derived from the Gmail label by stripping `Highland/`, lowercasing, replacing whitespace with underscores, and preserving slashes as MQTT hierarchy separators. Example: `Highland/Deliveries/USPS` → `highland/event/email/deliveries/usps/received`. Topics exist only as consumers arrive — there is no static registry.
 
 ```json
 {
   "message_id": "<CAxxxx@mail.gmail.com>",
-  "label": "informed_delivery",
-  "folder": "Highland/Informed Delivery",
+  "label": "deliveries/usps",
+  "gmail_label": "Highland/Deliveries/USPS",
   "from": "USPSInformeddelivery@email.informeddelivery.usps.com",
   "from_name": "USPS Informed Delivery",
   "to": "<household gmail>",
@@ -1487,15 +1487,17 @@ Specific notes on `email_ingress`:
 ```json
 {
   "status": "healthy",
-  "last_poll_at": "2026-04-22T07:20:00-04:00",
-  "last_successful_auth": "2026-04-22T07:20:00-04:00",
-  "messages_in_flight": 0,
   "imap_connection": "connected",
+  "connected_at": "2026-04-22T07:20:00-04:00",
+  "watching_folder": "[Gmail]/All Mail",
+  "messages_in_flight": 0,
+  "stale_messages": 0,
+  "last_error": null,
   "timestamp": "2026-04-22T07:20:00-04:00"
 }
 ```
 
-Published on every poll cycle. Degraded: messages past ACK TTL, repeated parse_error statuses, elevated poll latency. Unhealthy: IMAP auth failure, no successful poll in >N intervals.
+Published on a periodic interval (60s) and on significant state changes. Degraded: messages past ACK TTL, repeated parse_error statuses, recent but recovered IMAP errors. Unhealthy: IMAP auth failure, connection closed and failing to re-establish, no new events in an unexpectedly long window.
 
 ---
 
@@ -1573,7 +1575,8 @@ Published on every poll cycle. Degraded: messages past ACK TTL, repeated parse_e
 | `highland/command/weather/radar/+/enable` | All radar enable/disable commands |
 | `highland/event/scheduler/#` | All scheduler events |
 | `highland/event/driveway/#` | All bin events |
-| `highland/event/email/+/received` | All email events across every label |
+| `highland/event/email/+/+/received` | All Highland email events (two-level hierarchy: namespace + source) |
+| `highland/event/email/deliveries/+/received` | All delivery-related email events (USPS, FedEx, UPS, Amazon, etc.) |
 | `highland/ack/email` | Email ACKs from all consumers |
 | `highland/event/garage/#` | All garage events |
 | `highland/event/appliance/#` | All appliance cycle events |

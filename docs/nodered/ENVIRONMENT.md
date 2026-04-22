@@ -20,6 +20,62 @@ const raw = fs.readFileSync(filepath, 'utf8');
 
 This applies to any Node.js built-in or npm module used in function nodes.
 
+### Named Exports and the Destructure Pattern
+
+Modern npm packages frequently export named symbols rather than a default export:
+
+```javascript
+// imapflow's index.js
+module.exports = { ImapFlow };
+```
+
+Node-RED's module import gives you the **entire module object**, equivalent to `require('packageName')`. Setting `Import as: ImapFlow` in the Setup tab does **not** give you the `ImapFlow` class — it gives you `{ ImapFlow: [class ImapFlow] }`. Calling `new ImapFlow(...)` in that case fails with `"ImapFlow is not a constructor"`.
+
+**Convention:** name the Setup-tab import with a `Pkg` suffix, then destructure the named export at the top of the function body:
+
+**Setup tab:**
+
+| Module name | Import as |
+|---|---|
+| `imapflow` | `imapflowPkg` |
+| `mailparser` | `mailparserPkg` |
+
+**Function body:**
+
+```javascript
+const { ImapFlow } = imapflowPkg;
+const { simpleParser } = mailparserPkg;
+```
+
+This keeps the Setup-tab import name visibly distinct from the class/function being used, eliminating any ambiguity. Apply to every function node that consumes a named export.
+
+Packages that export a single default value (`module.exports = Foo`) don't need this — `Import as: Foo` works directly. When in doubt, destructure.
+
+---
+
+## Installing npm Packages
+
+Node-RED npm packages live under `/opt/highland/nodered/data/node_modules` on the Workflow host, mounted into the container at `/data`. The installation must run with the container's Node runtime — not the host's — because engine checks, lockfile generation, and install scripts must match the version that will actually execute the modules.
+
+**Always install inside the container:**
+
+```bash
+docker exec -it nodered npm install <package>
+docker compose up -d --force-recreate nodered
+```
+
+**Do NOT install from the host:**
+
+```bash
+# WRONG — uses host's Node, which may be an older version
+cd /opt/highland/nodered/data
+npm install <package>
+```
+
+Host-side installs produce `EBADENGINE` warnings when the host's Node is older than the container's (e.g. host on Node 18, container on Node 20). The packages usually still work, but the warnings are confusing and lockfiles may be written incorrectly. In-container installs avoid the ambiguity entirely.
+
+After installation, `--force-recreate` the `nodered` service so Node-RED picks up the new package. A plain `restart` is not sufficient.
+
 ---
 
 ## Context Storage (settings.js)
@@ -179,8 +235,17 @@ The NWS API specifically requests User-Agent in `(app_name, contact_email)` form
 | `node-red-contrib-home-assistant-websocket` | HA integration |
 | `node-red-node-markdown` | Markdown → HTML for Daily Digest |
 | `node-red-contrib-schedex` | Sunrise/sunset scheduling |
-| `node-red-node-email` | SMTP/IMAP for Daily Digest and mailbox polling |
+| `node-red-node-email` | SMTP for Daily Digest (IMAP side unused — see below) |
+
+## Installed npm Packages (for function nodes)
+
+These are plain npm packages installed via `docker exec -it nodered npm install`, used via the Setup tab module import pattern above.
+
+| Package | Purpose |
+|---------|---------|
+| `imapflow` | IMAP client for `Utility: Email Ingress` — modern maintained IMAP library with IDLE support |
+| `mailparser` | MIME parsing for incoming email bodies (multipart, HTML, attachments) |
 
 ---
 
-*Last Updated: 2026-03-26*
+*Last Updated: 2026-04-22*
