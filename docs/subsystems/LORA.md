@@ -14,6 +14,22 @@ LoRaWAN-based sensor network extending smart home coverage beyond the practical 
 **Frequency:** US915 (902–928 MHz)
 **Radio:** Semtech SX1302 8-channel chip
 
+**LoRaWAN configuration defaults (property-wide):**
+
+All Highland LoRa sensors are configured as follows, chosen for a short-range property-scale deployment where responsiveness matters:
+
+| Parameter | Value | Rationale |
+|-----------|-------|-----------|
+| Device class | **Class A** | Battery-powered sensors; Class C would drain batteries in days. Uplink speed is unaffected by class choice — Class A uplinks are just as fast as Class C when the device initiates. |
+| Spreading factor | **SF7 preferred, SF8 acceptable** | Gateway is within the property (tens to low hundreds of feet from any sensor). Low SF minimizes airtime per uplink, reducing latency. ADR (adaptive data rate) may negotiate SF upward if link quality requires; monitor and force if needed. |
+| Uplink confirmation | **Unconfirmed** | Fire-and-forget. Eliminates retransmit-on-NACK latency. For event-driven sensors (door-open, pickup), fast beats reliable — a missed event is acceptable; a delayed event is not. |
+| Heartbeat interval | **Hourly or longer** | Periodic state uplinks (battery, environmental) at low frequency; not the latency-sensitive path. |
+| Event-driven uplinks | **Immediate, no throttling** | Door-open and accelerometer-threshold events fire the radio immediately. No report-interval suppression on these. |
+
+**Expected end-to-end uplink latency (sensor event → MQTT on hub.local):** ~500ms–2 seconds in the common case. Contributors: sensor wake (~100-500ms) + airtime at SF7 (~50-150ms) + gateway processing + relay flow + MQTT hop. Empirically validate after first deployment.
+
+This latency figure matters for any subsystem that uses LoRa events to trigger other real-time actions (e.g., the future camera-capture-on-mailbox-open scheme in `DELIVERIES.md`).
+
 **Architecture note:** The gateway runs an internal SIoT MQTT broker (not configurable to an external broker natively). Data path uses a lightweight relay flow on the gateway's built-in Node-RED instance:
 
 ```
@@ -202,6 +218,7 @@ Primary consumer: `Utility: Deliveries` (see `subsystems/DELIVERIES.md`). The ba
 
 **Infrastructure**
 - [ ] SIoT topic structure — confirm `ProjectID/DeviceName` format during gateway setup
+- [ ] **End-to-end uplink latency characterization.** After first sensor deployment, measure and record the distribution of sensor-event-to-MQTT latency (20+ samples). Validates the ~500ms–2s assumption and surfaces any configuration issues (SF negotiation, network server delays). Relevant to `DELIVERIES.md § Future Enhancement: USPS Vehicle Detection` which depends on fast uplink to enable camera-capture-on-door-open.
 
 **Trash & Recycling**
 - [ ] RSSI calibration procedure — document threshold values once sensors are deployed
@@ -216,4 +233,4 @@ Primary consumer: `Utility: Deliveries` (see `subsystems/DELIVERIES.md`). The ba
 
 ---
 
-*Last Updated: 2026-04-21*
+*Last Updated: 2026-04-23*

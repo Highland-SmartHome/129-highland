@@ -55,7 +55,11 @@ All Ubuntu hosts run `avahi-daemon` for `.local` hostname resolution on the LAN.
 
 **Flat network — no VLANs.** All hosts and devices on a single LAN segment. This simplifies inter-service communication (MQTT, WebSocket, mDNS) during the initial build.
 
-**Future:** Network segmentation is planned but out of scope for the initial rebuild. When VLANs are eventually implemented, routing and firewall rules will be required for: MQTT (1883/8883), HA (8123), Z-Wave JS WebSocket (3000), Node-RED (1880), PostgreSQL (5432).
+**Current WiFi:** Verizon Fios router in the garage provides both routing and WiFi. Coverage is adequate for the current indoor device footprint but has known limits at the property edges (e.g., the mailbox area ~275ft from the house at the end of the driveway).
+
+**Future:** Network segmentation (VLANs) is planned but out of scope for the initial rebuild. When VLANs are eventually implemented, routing and firewall rules will be required for: MQTT (1883/8883), HA (8123), Z-Wave JS WebSocket (3000), Node-RED (1880), PostgreSQL (5432).
+
+**Known future project — network rebuild.** A broader rebuild of the LAN and WiFi infrastructure is anticipated but not yet scoped or scheduled. Candidate directions include replacing the Fios router with dedicated router + AP(s), moving to a managed ecosystem (UniFi, Omada, or mesh system with outdoor coverage), and implementing the VLAN segmentation above. Other Highland subsystems that have connectivity requirements at property edges (notably the Phase 3b camera in `subsystems/DELIVERIES.md`) should avoid committing to network-dependent hardware decisions until this rebuild is planned, or should defer those components until after.
 
 ---
 
@@ -72,4 +76,4 @@ Docker Compose maps the host's by-id symlink to a stable container-side device p
 
 ---
 
-*Last Updated: 2026-03-26*
+*Last Updated: 2026-04-23*
