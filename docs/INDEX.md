@@ -23,6 +23,7 @@ These have been discussed and decided. Reference the relevant doc for rationale.
 | File-based config, `secrets.json` gitignored | `nodered/CONFIG_MANAGEMENT.md` |
 | Schedex for time triggers | `nodered/SCHEDULING.md` |
 | JSONL logging, 30-day retention | `nodered/LOGGING.md` |
+| UTC for storage/transport, local for scheduling/presentation | `standards/TIME_HANDLING.md` |
 | HA Companion App as primary notification channel | `nodered/NOTIFICATIONS.md` |
 | Google Calendar for scheduled events | `subsystems/CALENDAR_INTEGRATION.md` |
 | Attendee-based camera suppression | `subsystems/CALENDAR_INTEGRATION.md` |
@@ -55,6 +56,7 @@ Conventions and contracts that everything else builds on. Read these before buil
 | [`standards/EVENT_ARCHITECTURE.md`](standards/EVENT_ARCHITECTURE.md) | MQTT namespace philosophy, event vs. state, scheduler periods, ACK pattern, payload conventions |
 | [`standards/MQTT_TOPICS.md`](standards/MQTT_TOPICS.md) | **Authoritative topic registry.** Adding/modifying topics, payload schemas, publisher/consumer mapping. When in doubt, this wins. |
 | [`standards/ENTITY_NAMING.md`](standards/ENTITY_NAMING.md) | HA entity naming conventions, disambiguation hierarchy, areas/floors, MQTT topic alignment |
+| [`standards/TIME_HANDLING.md`](standards/TIME_HANDLING.md) | Timestamp conventions — UTC for storage and transport, local time for scheduling and presentation, ISO 8601 format, DST handling |
 
 ---
 
@@ -181,5 +183,5 @@ New automation ideas → `AUTOMATION_BACKLOG.md`. Don't derail current work; cap
 
 ---
 
-*Last Updated: 2026-04-22*
+*Last Updated: 2026-04-24*
 
