@@ -155,7 +155,7 @@ All entities published under a single device `Highland Internet Connectivity` (i
 
 - **#55** — Outage detection and notification (consecutive failure tracking)
 - **#56** — Slow speed detection and notification (thresholds TBD after baseline established)
-- **#57** — Healthchecks.io dead man's switch gating on connectivity state
+- **#57** — ~~Healthchecks.io dead man's switch gating~~ **Implemented in `Utility: Health Checks`** — Internet Connectivity group gates ping on `highland/state/network/connectivity` state
 - **#58** — State change and result logging
 
 ---

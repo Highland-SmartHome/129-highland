@@ -30,6 +30,7 @@ Three distinct signatures — completely unambiguous diagnosis.
 - `Node-RED` — Node-RED self-reports via direct HTTP ping ✅
 - `Home Assistant` — native HA automation pinging Healthchecks.io directly ✅
 - `Node-RED / Home Assistant Edge` — Node-RED's HTTP check to HA API ✅
+- `Internet Connectivity` — Node-RED gates ping on `highland/state/network/connectivity` state (dead man's switch) ✅
 - MQTT, Z2M, Z-Wave JS self-reports and edge checks — pending
 
 ---
@@ -155,6 +156,23 @@ Overall status:
 
 ---
 
+## Internet Connectivity Check
+
+The internet connectivity check is structurally different from the internal service checks — it uses a **dead man's switch** pattern rather than active pinging.
+
+**Implementation:** `Utility: Health Checks` — `Internet Connectivity` group subscribes to `highland/state/network/connectivity` (retained). On every `up` result, it pings `highland-internet-connectivity` on Healthchecks.io. On `down` or `degraded`, the ping is suppressed — Healthchecks.io fires an alert after the grace period expires.
+
+**Why a dead man's switch:** If the internet is down, outbound HTTP to Healthchecks.io is impossible regardless. Rather than trying to detect and notify through the same channel that's broken, the absence of pings is itself the signal.
+
+**Healthchecks.io configuration:**
+- Check name: `highland-internet-connectivity`
+- Ping URL: `config.secrets.healthchecks_io.internet_connectivity`
+- Grace period: 5 minutes (5× the 1-minute ping cadence from `Utility: Internet Connectivity`)
+
+**Notification path:** Healthchecks.io emails on grace period expiry — the primary out-of-home alerting mechanism since push notifications via Nabu Casa require internet connectivity.
+
+---
+
 ## Utility: Connections Flow
 
 ### Purpose
@@ -222,4 +240,4 @@ The `!== 'down'` guard handles the startup case where the flag hasn't been set y
 
 ---
 
-*Last Updated: 2026-03-26*
+*Last Updated: 2026-04-28*
