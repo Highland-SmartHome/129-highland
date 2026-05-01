@@ -179,8 +179,10 @@ The day/date in the subject is informational only — the `Date:` header is auth
 **Daily Digest body content:**
 
 - The plain text part is boilerplate-only (dashboard URL, unsubscribe URL, copyright) — identical between mail-day and no-mail-day digests except for the date string. **Not usable for parsing.**
-- The HTML body contains a count line in visible text matching `/You have (\d+) mailpiece\(s\) and (\d+) inbound package\(s\) arriving soon\./`. The first capture group is the authoritative letter-mail piece count for state-machine promotion. The second capture group (digest's package-section count) is intentionally discarded per § Why this matters for the design.
-- The phrase appears twice in the rendered HTML (mobile and desktop layouts); first match is sufficient.
+- The HTML body contains the count in two places (mobile and desktop layouts). The piece count is wrapped in `<span id="total-mailpieces">` (and `id="total-mailpieces-secondary"` for the duplicate); the package count similarly in `<span id="total-packages">` / `total-packages-secondary`. These element IDs are the **primary parse anchor** — they're explicitly named for programmatic reference and survive template re-skinning more reliably than the surrounding visible phrasing.
+- A **fallback parse anchor** is the visible-text regex `/You have (\d+) mailpiece\(s\) and (\d+) inbound package\(s\)/` against the HTML-stripped body. This handles older template variants that lack the ID anchors but retain the canonical phrasing. The 4/29 sample initially used to derive the parser actually had naked digits inline in the text — the 5/1 digest revealed that USPS wraps the digits in the span IDs, which we hadn't seen on the first sample.
+- The dual-anchor approach (try IDs first, fall back to visible text) covers both observed templates and gives us the most resilience against future USPS template changes. Genuine `parse_error` should fire only if both anchors fail.
+- The package count from either anchor is intentionally discarded per § Why this matters for the design.
 
 **Daily Digest MIME structure:**
 
